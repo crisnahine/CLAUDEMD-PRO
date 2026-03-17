@@ -14,6 +14,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { analyzeCodebase } from "../analyzers/index.js";
+import { detectStack } from "../analyzers/stack-detector.js";
+import { scanFiles } from "../analyzers/file-scanner.js";
+import { readBatch } from "../analyzers/file-reader.js";
 import { renderClaudeMd } from "../core/generate.js";
 import { lintContent } from "../core/lint.js";
 import { countTokens, estimateTokens } from "../token/index.js";
@@ -236,6 +239,53 @@ const TOOLS = [
           description: "Raw config object to validate (used instead of rootDir)",
         },
       },
+    },
+  },
+  {
+    name: "claudemd_scan_files",
+    description:
+      "Categorize all project files by functional role (components, models, tests, config, routes, etc.). Returns a structured map of file categories for deeper analysis. Use after claudemd_generate to understand which files to read for richer CLAUDE.md content.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        rootDir: {
+          type: "string",
+          description: "Absolute path to the project root directory to scan",
+        },
+        exclude: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Additional directory names to exclude from scanning (node_modules, .git, etc. are excluded by default)",
+        },
+      },
+      required: ["rootDir"],
+    },
+  },
+  {
+    name: "claudemd_read_batch",
+    description:
+      "Read multiple project files at once and return their contents with language detection. Safety-limited to 20 files per call, 200 lines per file by default (max 500). Use after claudemd_scan_files to read key files from each category for deeper analysis.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        rootDir: {
+          type: "string",
+          description: "Absolute path to the project root directory",
+        },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Array of file paths relative to rootDir to read (max 20)",
+        },
+        maxLinesPerFile: {
+          type: "number",
+          description:
+            "Maximum lines to read per file (default: 200, max: 500)",
+        },
+      },
+      required: ["rootDir", "files"],
     },
   },
 ];
@@ -696,11 +746,47 @@ async function handleValidate(params: {
   return [{ type: "text", text: JSON.stringify(result, null, 2) }];
 }
 
+async function handleScanFiles(params: {
+  rootDir: string;
+  exclude?: string[];
+}): Promise<{ type: string; text: string }[]> {
+  const rootDir = resolve(params.rootDir);
+  if (!existsSync(rootDir)) {
+    throw new Error(`Directory not found: ${rootDir}`);
+  }
+
+  const stack = await detectStack(rootDir);
+  const result = scanFiles(rootDir, params.exclude, stack.framework);
+
+  return [{ type: "text", text: JSON.stringify(result, null, 2) }];
+}
+
+async function handleReadBatch(params: {
+  rootDir: string;
+  files: string[];
+  maxLinesPerFile?: number;
+}): Promise<{ type: string; text: string }[]> {
+  const rootDir = resolve(params.rootDir);
+  if (!existsSync(rootDir)) {
+    throw new Error(`Directory not found: ${rootDir}`);
+  }
+
+  if (params.files.length > 20) {
+    throw new Error(
+      `Too many files requested (${params.files.length}). Maximum is 20 per call.`
+    );
+  }
+
+  const result = readBatch(rootDir, params.files, params.maxLinesPerFile);
+
+  return [{ type: "text", text: JSON.stringify(result, null, 2) }];
+}
+
 // ─── MCP Protocol Handler ────────────────────────────────────
 
 const SERVER_INFO = {
   name: "claudemd-pro",
-  version: "0.3.0",
+  version: "0.4.0",
 };
 
 const CAPABILITIES = {
@@ -769,6 +855,12 @@ async function handleRequest(req: JsonRpcRequest): Promise<JsonRpcResponse> {
             break;
           case "claudemd_validate":
             content = await handleValidate(toolArgs);
+            break;
+          case "claudemd_scan_files":
+            content = await handleScanFiles(toolArgs);
+            break;
+          case "claudemd_read_batch":
+            content = await handleReadBatch(toolArgs);
             break;
           default:
             return makeError(id, -32601, `Unknown tool: ${toolName}`);

@@ -16,7 +16,7 @@ Your CLAUDE.md is the highest-leverage file in your AI coding workflow. A good o
 - **Budget** — See exactly where your tokens are going and how to optimize
 - **Evolve** — Detect codebase drift and keep your CLAUDE.md in sync automatically
 - **Compare** — Before/after scoring to measure your CLAUDE.md improvements
-- **MCP Server** — Integrate directly with Claude Desktop and Claude Code
+- **MCP Server** — Integrate directly with Claude Desktop and Claude Code (10 tools including deep file scanning)
 - **GitHub Action** — Lint your CLAUDE.md on every push/PR with annotations
 - **Framework-Aware** — Deep analysis for Rails, Next.js, Django, Laravel, Phoenix, Go, Rust, Spring, FastAPI, NestJS, Nuxt, Svelte/SvelteKit, Astro, Remix, Hono, Express.js
 - **Git History Mining** — Extract patterns and conventions from your commit history
@@ -133,7 +133,22 @@ claudemd compare old.md new.md --format json  # JSON output
 
 ### `claudemd serve`
 
-Start an MCP server for Claude Desktop / Claude Code integration.
+Start an MCP server for Claude Desktop / Claude Code integration. Exposes 10 tools:
+
+| Tool | Description |
+|------|-------------|
+| `claudemd_generate` | Analyze codebase and return generated CLAUDE.md |
+| `claudemd_lint` | Score and lint a CLAUDE.md with detailed findings |
+| `claudemd_score` | Quick effectiveness score (0–100) |
+| `claudemd_budget` | Token breakdown by section |
+| `claudemd_evolve` | Detect drift between CLAUDE.md and codebase |
+| `claudemd_compare` | Before/after scoring of two CLAUDE.md files |
+| `claudemd_fix` | Auto-fix suggestions for lint issues |
+| `claudemd_validate` | Validate .claudemdrc config files |
+| `claudemd_scan_files` | Categorize all project files by role (components, models, tests, etc.) |
+| `claudemd_read_batch` | Read multiple files at once (max 20, with safety controls) |
+
+The last two tools enable a **multi-phase deep analysis** workflow: generate a base CLAUDE.md, scan files by category, read key files from each category, then synthesize a richer result.
 
 ```bash
 claudemd serve
@@ -212,7 +227,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: crisnahine/CLAUDEMD-PRO@v0.3.0
+      - uses: crisnahine/CLAUDEMD-PRO@v0.4.0
         with:
           threshold: 60
           strict: false

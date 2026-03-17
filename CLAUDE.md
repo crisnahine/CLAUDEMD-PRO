@@ -21,7 +21,7 @@ npm run lint                         # ESLint
 ```
 /src/cli/          # CLI entry + command handlers (generate, lint, budget, evolve, compare, serve)
 /src/core/         # Shared logic modules reused by CLI and MCP (generate, lint)
-/src/analyzers/    # Codebase analysis modules (stack, arch, db, testing, gotchas, git-history, etc.)
+/src/analyzers/    # Codebase analysis modules (stack, arch, db, testing, gotchas, git-history, file-scanner, file-reader, etc.)
 /src/frameworks/   # Framework-specific deep analyzers (13 frameworks)
 /src/linter/       # Modular lint rules + scoring engine
 /src/linter/rules/ # Individual lint rule modules (18 rules)
@@ -29,9 +29,9 @@ npm run lint                         # ESLint
 /src/token/        # Token counting via tiktoken with chars/4 fallback
 /src/config/       # .claudemdrc config loading + validation via cosmiconfig
 /src/evolve/       # Drift detection engine
-/src/mcp/          # MCP server for Claude Desktop/Code integration (8 tools)
+/src/mcp/          # MCP server for Claude Desktop/Code integration (10 tools)
 /src/github-action/ # GitHub Action wrapper (lint + drift check + PR comments)
-/tests/            # Vitest test suite (124 tests)
+/tests/            # Vitest test suite (141 tests)
 /tests/fixtures/   # Sample project directories (rails, nextjs, django, go, laravel, fastapi, spring, monorepo, minimal)
 ```
 
