@@ -1,0 +1,583 @@
+/**
+ * Rust (Actix / Axum / Rocket) Deep Analyzer
+ *
+ * Detects Rust web frameworks, diesel/sqlx/sea-orm, tower middleware,
+ * tokio async runtime, clippy, rustfmt, cargo test, serde, tracing,
+ * and Rust-specific architectural patterns.
+ */
+
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
+// ─── Types ──────────────────────────────────────────────────
+
+export interface FrameworkEnrichment {
+  gotchas: Array<{ rule: string; reason: string; severity: "critical" | "important" | "nice-to-have" }>;
+  dirPurposes: Record<string, string>;
+  notableDeps: Array<{ name: string; pattern: string; label: string }>;
+  entryPoints: string[];
+  patterns: Array<{ check: string; label: string }>;
+  commands: Array<{ command: string; description: string; category: "dev" | "test" | "build" | "lint" | "db" | "deploy" | "other" }>;
+  database?: { ormName: string; schemaFile?: string; migrationDir?: string };
+  testing?: { framework: string; testDir: string; systemTestTools?: string[] };
+}
+
+// ─── Helpers ────────────────────────────────────────────────
+
+function readSafe(path: string): string | null {
+  try {
+    return existsSync(path) ? readFileSync(path, "utf-8") : null;
+  } catch {
+    return null;
+  }
+}
+
+type RustFramework = "actix-web" | "axum" | "rocket" | "warp" | "poem" | "tide" | "unknown";
+
+function detectRustFramework(cargoToml: string): RustFramework {
+  // Check [dependencies] section for web frameworks
+  if (cargoToml.includes("actix-web")) return "actix-web";
+  if (cargoToml.includes("axum")) return "axum";
+  if (cargoToml.includes("rocket")) return "rocket";
+  if (cargoToml.includes("warp")) return "warp";
+  if (cargoToml.includes("poem")) return "poem";
+  if (cargoToml.includes("tide")) return "tide";
+  return "unknown";
+}
+
+function isWorkspace(cargoToml: string): boolean {
+  return cargoToml.includes("[workspace]");
+}
+
+// ─── Analyzer ───────────────────────────────────────────────
+
+export function analyzeRust(
+  rootDir: string,
+  keyDeps: Record<string, string>
+): FrameworkEnrichment {
+  const enrichment: FrameworkEnrichment = {
+    gotchas: [],
+    dirPurposes: {},
+    notableDeps: [],
+    entryPoints: [],
+    patterns: [],
+    commands: [],
+  };
+
+  const cargoToml = readSafe(join(rootDir, "Cargo.toml")) ?? "";
+  const cargoLock = readSafe(join(rootDir, "Cargo.lock")) ?? "";
+  const allDeps = `${cargoToml}\n${cargoLock}`;
+  const rustFramework = detectRustFramework(cargoToml);
+  const workspace = isWorkspace(cargoToml);
+
+  // Extract package name
+  const nameMatch = cargoToml.match(/^name\s*=\s*"([^"]+)"/m);
+  const packageName = nameMatch?.[1] ?? null;
+
+  // Check for workspace members
+  const membersCandidates: string[] = [];
+  if (workspace) {
+    const membersMatch = cargoToml.match(/members\s*=\s*\[([\s\S]*?)\]/);
+    if (membersMatch) {
+      const raw = membersMatch[1];
+      const items = raw.match(/"([^"]+)"/g);
+      if (items) {
+        for (const item of items) {
+          membersCandidates.push(item.replace(/"/g, ""));
+        }
+      }
+    }
+  }
+
+  // ─── Entry Points ──────────────────────────────────────────
+
+  if (existsSync(join(rootDir, "src/main.rs"))) {
+    enrichment.entryPoints.push("src/main.rs");
+  }
+  if (existsSync(join(rootDir, "src/lib.rs"))) {
+    enrichment.entryPoints.push("src/lib.rs");
+  }
+  enrichment.entryPoints.push("Cargo.toml");
+
+  // Workspace members
+  for (const member of membersCandidates) {
+    // Handle glob patterns like "crates/*"
+    if (member.includes("*")) {
+      const base = member.replace("/*", "");
+      if (existsSync(join(rootDir, base))) {
+        try {
+          const entries = readdirSync(join(rootDir, base), { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.isDirectory()) {
+              const memberToml = `${base}/${entry.name}/Cargo.toml`;
+              if (existsSync(join(rootDir, memberToml))) {
+                enrichment.entryPoints.push(memberToml);
+              }
+            }
+          }
+        } catch { /* permission denied */ }
+      }
+    } else {
+      const memberToml = `${member}/Cargo.toml`;
+      if (existsSync(join(rootDir, memberToml))) {
+        enrichment.entryPoints.push(memberToml);
+      }
+    }
+  }
+
+  // Config files
+  const configCandidates = [
+    "config.toml", "config.yaml", "config.yml",
+    "config/default.toml", "config/default.yaml",
+    ".env",
+  ];
+  for (const c of configCandidates) {
+    if (existsSync(join(rootDir, c))) {
+      enrichment.entryPoints.push(c);
+      break;
+    }
+  }
+
+  // ─── Directory Purposes ────────────────────────────────────
+
+  enrichment.dirPurposes = {
+    "src/": "Application source code",
+    "src/bin/": "Additional binary entry points",
+    "tests/": "Integration tests (separate from unit tests in src/)",
+    "benches/": "Benchmark tests (cargo bench)",
+    "examples/": "Example programs (cargo run --example)",
+    "target/": "Build output (DON'T modify — auto-generated by cargo)",
+    "migrations/": "Database migration files",
+  };
+
+  if (workspace) {
+    enrichment.dirPurposes["crates/"] = "Workspace crate members";
+    for (const member of membersCandidates) {
+      if (!member.includes("*")) {
+        enrichment.dirPurposes[`${member}/`] = "Workspace crate";
+      }
+    }
+  }
+
+  // Common Rust project layout directories
+  const srcDirs: Record<string, string> = {
+    "src/api": "API route handlers / endpoints",
+    "src/routes": "Route definitions",
+    "src/handlers": "Request handlers",
+    "src/models": "Data models / database entities",
+    "src/schema": "Database schema (Diesel) or domain schema",
+    "src/db": "Database connection and queries",
+    "src/services": "Business logic service layer",
+    "src/domain": "Domain models and business rules",
+    "src/middleware": "HTTP middleware (tower / framework-specific)",
+    "src/config": "Configuration loading and types",
+    "src/error": "Custom error types and handling",
+    "src/errors": "Custom error types and handling",
+    "src/auth": "Authentication / authorization logic",
+    "src/utils": "Utility functions",
+    "src/telemetry": "Logging, tracing, metrics setup",
+    "src/startup": "Application startup / server initialization",
+    "src/extractors": "Custom request extractors",
+    "src/state": "Application state (shared across handlers)",
+  };
+
+  for (const [dir, purpose] of Object.entries(srcDirs)) {
+    if (existsSync(join(rootDir, dir))) {
+      enrichment.dirPurposes[`${dir}/`] = purpose;
+    }
+  }
+
+  // Diesel schema
+  if (existsSync(join(rootDir, "src/schema.rs"))) {
+    enrichment.dirPurposes["src/schema.rs"] = "Diesel auto-generated schema (DON'T edit manually)";
+  }
+
+  // Migration directories
+  const migrationDirs = ["migrations", "db/migrations"];
+  for (const dir of migrationDirs) {
+    if (existsSync(join(rootDir, dir))) {
+      enrichment.dirPurposes[`${dir}/`] = "Database migration files (SQL)";
+    }
+  }
+
+  // ─── Notable Dependencies ──────────────────────────────────
+
+  const depChecks: Array<{ name: string; pattern: string; label: string }> = [
+    // Web frameworks
+    { name: "actix-web", pattern: "actix-web", label: "Actix Web (HTTP framework)" },
+    { name: "axum", pattern: "axum", label: "Axum (HTTP framework, tower-based)" },
+    { name: "rocket", pattern: "rocket", label: "Rocket (HTTP framework)" },
+    { name: "warp", pattern: "warp", label: "Warp (HTTP framework)" },
+    { name: "poem", pattern: "poem", label: "Poem (HTTP framework)" },
+    // Async runtimes
+    { name: "tokio", pattern: "tokio", label: "Tokio (async runtime)" },
+    { name: "async-std", pattern: "async-std", label: "async-std (async runtime)" },
+    // Tower middleware
+    { name: "tower", pattern: "tower", label: "Tower (middleware framework)" },
+    { name: "tower-http", pattern: "tower-http", label: "Tower HTTP (CORS, tracing, compression)" },
+    // Database
+    { name: "diesel", pattern: "diesel", label: "Diesel (ORM / query builder)" },
+    { name: "sqlx", pattern: "sqlx", label: "sqlx (async SQL toolkit)" },
+    { name: "sea-orm", pattern: "sea-orm", label: "SeaORM (async ORM)" },
+    { name: "sea-query", pattern: "sea-query", label: "SeaQuery (query builder)" },
+    { name: "deadpool", pattern: "deadpool", label: "Deadpool (connection pool)" },
+    { name: "bb8", pattern: "bb8", label: "bb8 (connection pool)" },
+    { name: "r2d2", pattern: "r2d2", label: "r2d2 (connection pool)" },
+    // Serialization
+    { name: "serde", pattern: "serde", label: "Serde (serialization/deserialization)" },
+    { name: "serde_json", pattern: "serde_json", label: "serde_json (JSON)" },
+    // Auth
+    { name: "jsonwebtoken", pattern: "jsonwebtoken", label: "jsonwebtoken (JWT)" },
+    { name: "argon2", pattern: "argon2", label: "Argon2 (password hashing)" },
+    { name: "bcrypt", pattern: "bcrypt", label: "bcrypt (password hashing)" },
+    // Observability
+    { name: "tracing", pattern: "tracing", label: "tracing (structured logging + spans)" },
+    { name: "tracing-subscriber", pattern: "tracing-subscriber", label: "tracing-subscriber (log formatting)" },
+    { name: "opentelemetry", pattern: "opentelemetry", label: "OpenTelemetry (distributed tracing)" },
+    { name: "metrics", pattern: "metrics", label: "metrics (Prometheus-compatible)" },
+    // Config
+    { name: "config", pattern: "config =", label: "config-rs (configuration management)" },
+    { name: "dotenvy", pattern: "dotenvy", label: "dotenvy (.env file loading)" },
+    { name: "dotenv", pattern: "dotenv", label: "dotenv (.env file loading)" },
+    // Validation
+    { name: "validator", pattern: "validator", label: "validator (struct validation)" },
+    // HTTP client
+    { name: "reqwest", pattern: "reqwest", label: "reqwest (HTTP client)" },
+    // Error handling
+    { name: "anyhow", pattern: "anyhow", label: "anyhow (flexible error handling)" },
+    { name: "thiserror", pattern: "thiserror", label: "thiserror (derive Error trait)" },
+    { name: "eyre", pattern: "eyre", label: "eyre (error reporting)" },
+    // CLI
+    { name: "clap", pattern: "clap", label: "Clap (CLI argument parser)" },
+    // Templating
+    { name: "askama", pattern: "askama", label: "Askama (type-safe templates)" },
+    { name: "tera", pattern: "tera", label: "Tera (Jinja2-style templates)" },
+    { name: "maud", pattern: "maud", label: "Maud (HTML macro templates)" },
+    // Background jobs
+    { name: "tokio-cron-scheduler", pattern: "tokio-cron-scheduler", label: "Cron scheduler" },
+    // Redis
+    { name: "redis", pattern: "redis", label: "Redis client" },
+    { name: "fred", pattern: "fred", label: "Fred (async Redis client)" },
+    // gRPC
+    { name: "tonic", pattern: "tonic", label: "Tonic (gRPC framework)" },
+    { name: "prost", pattern: "prost", label: "Prost (protobuf for Rust)" },
+    // Testing
+    { name: "mockall", pattern: "mockall", label: "Mockall (mock generation)" },
+    { name: "wiremock", pattern: "wiremock", label: "WireMock (HTTP mocking)" },
+    { name: "fake", pattern: "fake", label: "Fake (test data generation)" },
+    { name: "proptest", pattern: "proptest", label: "proptest (property-based testing)" },
+    { name: "insta", pattern: "insta", label: "Insta (snapshot testing)" },
+    { name: "rstest", pattern: "rstest", label: "rstest (parameterized tests)" },
+  ];
+
+  for (const dep of depChecks) {
+    if (allDeps.includes(dep.pattern)) {
+      enrichment.notableDeps.push(dep);
+    }
+  }
+
+  // ─── Patterns ──────────────────────────────────────────────
+
+  if (rustFramework !== "unknown") {
+    const fwLabels: Record<RustFramework, string> = {
+      "actix-web": "Actix Web HTTP framework (actor-based)",
+      "axum": "Axum HTTP framework (tower-based, ergonomic extractors)",
+      "rocket": "Rocket HTTP framework (request guards, fairings)",
+      "warp": "Warp HTTP framework (filter composition)",
+      "poem": "Poem HTTP framework",
+      "tide": "Tide HTTP framework (async-std based)",
+      "unknown": "",
+    };
+    enrichment.patterns.push({ check: `${rustFramework} in deps`, label: fwLabels[rustFramework] });
+  }
+
+  if (allDeps.includes("tokio")) {
+    enrichment.patterns.push({ check: "tokio in deps", label: "Tokio async runtime" });
+  }
+
+  if (allDeps.includes("tower") || allDeps.includes("tower-http")) {
+    enrichment.patterns.push({ check: "tower in deps", label: "Tower middleware stack" });
+  }
+
+  if (allDeps.includes("tonic")) {
+    enrichment.patterns.push({ check: "tonic in deps", label: "gRPC services (Tonic)" });
+  }
+
+  if (allDeps.includes("tracing")) {
+    enrichment.patterns.push({ check: "tracing in deps", label: "Structured tracing / logging (tracing crate)" });
+  }
+
+  if (workspace) {
+    enrichment.patterns.push({ check: "[workspace] in Cargo.toml", label: `Cargo workspace (${membersCandidates.length} members)` });
+  }
+
+  if (allDeps.includes("serde")) {
+    enrichment.patterns.push({ check: "serde in deps", label: "Serde serialization (derive macros)" });
+  }
+
+  if (allDeps.includes("thiserror") || allDeps.includes("anyhow")) {
+    enrichment.patterns.push({ check: "error handling crates", label: "Typed error handling (thiserror/anyhow)" });
+  }
+
+  if (existsSync(join(rootDir, "proto")) || existsSync(join(rootDir, "protos"))) {
+    enrichment.patterns.push({ check: "proto/ directory", label: "Protocol Buffer definitions" });
+  }
+
+  if (existsSync(join(rootDir, "build.rs"))) {
+    enrichment.patterns.push({ check: "build.rs exists", label: "Custom build script (build.rs)" });
+  }
+
+  // Feature flags
+  if (cargoToml.includes("[features]")) {
+    enrichment.patterns.push({ check: "[features] in Cargo.toml", label: "Cargo feature flags for conditional compilation" });
+  }
+
+  // Docker
+  if (existsSync(join(rootDir, "Dockerfile"))) {
+    enrichment.patterns.push({ check: "Dockerfile", label: "Docker containerization" });
+  }
+
+  // ─── Commands ──────────────────────────────────────────────
+
+  enrichment.commands.push(
+    { command: "cargo run", description: "Build and run the application", category: "dev" },
+    { command: "cargo test", description: "Run all tests (unit + integration)", category: "test" },
+    { command: "cargo test -- --nocapture", description: "Run tests with stdout visible", category: "test" },
+    { command: "cargo build", description: "Build in debug mode", category: "build" },
+    { command: "cargo build --release", description: "Build optimized release binary", category: "build" },
+    { command: "cargo clippy -- -D warnings", description: "Run Clippy linter (deny warnings)", category: "lint" },
+    { command: "cargo fmt", description: "Format code with rustfmt", category: "lint" },
+    { command: "cargo fmt --check", description: "Check formatting without modifying files", category: "lint" },
+    { command: "cargo check", description: "Type-check without building (fast)", category: "lint" },
+    { command: "cargo doc --open", description: "Generate and open documentation", category: "other" },
+    { command: "cargo update", description: "Update dependencies in Cargo.lock", category: "build" },
+  );
+
+  // Watch mode
+  if (allDeps.includes("cargo-watch") || existsSync(join(rootDir, ".cargo/config.toml"))) {
+    enrichment.commands.push(
+      { command: "cargo watch -x run", description: "Run with auto-restart on changes", category: "dev" },
+      { command: "cargo watch -x test", description: "Run tests on file changes", category: "test" },
+    );
+  }
+
+  // Diesel CLI
+  if (allDeps.includes("diesel")) {
+    enrichment.commands.push(
+      { command: "diesel migration run", description: "Apply pending Diesel migrations", category: "db" },
+      { command: "diesel migration revert", description: "Rollback last Diesel migration", category: "db" },
+      { command: "diesel migration generate name", description: "Create new migration (up.sql / down.sql)", category: "db" },
+      { command: "diesel print-schema", description: "Print current database schema as Rust code", category: "db" },
+      { command: "diesel setup", description: "Create database and run migrations", category: "db" },
+    );
+  }
+
+  // sqlx
+  if (allDeps.includes("sqlx")) {
+    enrichment.commands.push(
+      { command: "sqlx migrate run", description: "Apply pending sqlx migrations", category: "db" },
+      { command: "sqlx migrate revert", description: "Rollback last sqlx migration", category: "db" },
+      { command: "sqlx migrate add name", description: "Create new migration file", category: "db" },
+      { command: "cargo sqlx prepare", description: "Generate offline query data for CI builds", category: "build" },
+    );
+  }
+
+  // SeaORM
+  if (allDeps.includes("sea-orm")) {
+    enrichment.commands.push(
+      { command: "sea-orm-cli migrate up", description: "Apply pending SeaORM migrations", category: "db" },
+      { command: "sea-orm-cli migrate down", description: "Rollback last SeaORM migration", category: "db" },
+      { command: "sea-orm-cli generate entity -o src/entities", description: "Generate entity code from DB schema", category: "other" },
+    );
+  }
+
+  // Workspace commands
+  if (workspace) {
+    enrichment.commands.push(
+      { command: "cargo test --workspace", description: "Run tests for all workspace members", category: "test" },
+      { command: "cargo build --workspace", description: "Build all workspace members", category: "build" },
+      { command: "cargo clippy --workspace -- -D warnings", description: "Lint all workspace members", category: "lint" },
+    );
+  }
+
+  // Benchmarks
+  if (existsSync(join(rootDir, "benches"))) {
+    enrichment.commands.push(
+      { command: "cargo bench", description: "Run benchmarks", category: "test" },
+    );
+  }
+
+  // Docker
+  if (existsSync(join(rootDir, "docker-compose.yml")) || existsSync(join(rootDir, "compose.yml"))) {
+    enrichment.commands.push(
+      { command: "docker compose up -d", description: "Start infrastructure services", category: "dev" },
+    );
+  }
+
+  // Nextest (faster test runner)
+  if (allDeps.includes("cargo-nextest")) {
+    enrichment.commands.push(
+      { command: "cargo nextest run", description: "Run tests with nextest (parallel)", category: "test" },
+    );
+  }
+
+  // ─── Database ──────────────────────────────────────────────
+
+  if (allDeps.includes("diesel")) {
+    enrichment.database = {
+      ormName: "Diesel",
+      schemaFile: "src/schema.rs",
+      migrationDir: "migrations",
+    };
+  } else if (allDeps.includes("sqlx")) {
+    enrichment.database = {
+      ormName: "sqlx (compile-time checked SQL)",
+      migrationDir: "migrations",
+    };
+  } else if (allDeps.includes("sea-orm")) {
+    enrichment.database = {
+      ormName: "SeaORM",
+      migrationDir: "migration/src",
+    };
+  }
+
+  // ─── Testing ───────────────────────────────────────────────
+
+  enrichment.testing = {
+    framework: "cargo test (built-in)",
+    testDir: "tests/ (integration) + src/ (unit, colocated)",
+    systemTestTools: [],
+  };
+
+  if (allDeps.includes("mockall")) enrichment.testing.systemTestTools!.push("mockall (trait mocking)");
+  if (allDeps.includes("wiremock")) enrichment.testing.systemTestTools!.push("wiremock (HTTP mocking)");
+  if (allDeps.includes("fake")) enrichment.testing.systemTestTools!.push("fake (test data generation)");
+  if (allDeps.includes("proptest")) enrichment.testing.systemTestTools!.push("proptest (property-based testing)");
+  if (allDeps.includes("insta")) enrichment.testing.systemTestTools!.push("insta (snapshot testing)");
+  if (allDeps.includes("rstest")) enrichment.testing.systemTestTools!.push("rstest (parameterized tests + fixtures)");
+  if (allDeps.includes("testcontainers")) enrichment.testing.systemTestTools!.push("testcontainers (Docker-based integration tests)");
+  if (allDeps.includes("tokio") && allDeps.includes("test")) enrichment.testing.systemTestTools!.push("#[tokio::test] (async test support)");
+
+  // ─── Gotchas ───────────────────────────────────────────────
+
+  enrichment.gotchas.push(
+    {
+      rule: "DON'T modify files in target/ directory",
+      reason: "target/ contains all build artifacts and is auto-generated by cargo. Changes are overwritten on every build",
+      severity: "critical",
+    },
+    {
+      rule: "DON'T use `.unwrap()` or `.expect()` in production code paths",
+      reason: "unwrap() panics on None/Err, crashing the process. Use `?` operator, `match`, or `unwrap_or_default()`. Reserve unwrap() for tests and truly impossible states",
+      severity: "critical",
+    },
+    {
+      rule: "DON'T use `clone()` to satisfy the borrow checker without understanding why",
+      reason: "Cloning as a workaround hides design issues and wastes allocations. Restructure ownership, use references, or Arc<T> for shared ownership",
+      severity: "important",
+    },
+    {
+      rule: "DON'T block the async runtime with synchronous I/O",
+      reason: "Use `tokio::task::spawn_blocking()` for CPU-heavy or sync I/O operations. Blocking an async executor thread starves other tasks",
+      severity: "critical",
+    },
+    {
+      rule: "DON'T hold a mutex lock across `.await` points",
+      reason: "std::sync::Mutex is not async-aware. Holding it across await causes deadlocks. Use tokio::sync::Mutex or restructure to release before await",
+      severity: "critical",
+    },
+    {
+      rule: "DON'T forget to add `#[derive(Serialize, Deserialize)]` on API types",
+      reason: "Serde derives are required for JSON request/response handling. Missing derives cause compile errors that can be confusing to diagnose",
+      severity: "important",
+    },
+    {
+      rule: "DON'T ignore Clippy warnings",
+      reason: "Clippy catches common mistakes, performance issues, and unidiomatic code. Run `cargo clippy -- -D warnings` in CI to enforce",
+      severity: "important",
+    },
+    {
+      rule: "DON'T commit Cargo.lock for library crates (only for binaries)",
+      reason: "For libraries, Cargo.lock should be in .gitignore so downstream users get fresh dependency resolution. For binaries/apps, always commit it",
+      severity: "nice-to-have",
+    },
+    {
+      rule: "ALWAYS handle all enum variants in match expressions",
+      reason: "Using `_ => {}` wildcard catch-all in match silently swallows new variants when enums grow. Explicit matches catch missing cases at compile time",
+      severity: "important",
+    },
+    {
+      rule: "ALWAYS derive `Debug` on all public types",
+      reason: "Debug is essential for error messages, logging, and test assertion output. Missing Debug on types makes debugging much harder",
+      severity: "nice-to-have",
+    },
+  );
+
+  // Diesel-specific
+  if (allDeps.includes("diesel")) {
+    enrichment.gotchas.push(
+      {
+        rule: "DON'T manually edit src/schema.rs",
+        reason: "src/schema.rs is auto-generated by `diesel print-schema`. Edit migrations and re-run `diesel migration run` to update it",
+        severity: "critical",
+      },
+      {
+        rule: "DON'T forget to run `diesel setup` when cloning the project",
+        reason: "diesel setup creates the database and runs all migrations. Without it, the app can't connect or queries fail with missing table errors",
+        severity: "important",
+      },
+    );
+  }
+
+  // sqlx-specific
+  if (allDeps.includes("sqlx")) {
+    enrichment.gotchas.push(
+      {
+        rule: "DON'T forget `cargo sqlx prepare` before CI builds",
+        reason: "sqlx verifies SQL queries at compile time against a live database. `cargo sqlx prepare` generates offline query metadata so CI doesn't need a database",
+        severity: "critical",
+      },
+      {
+        rule: "DON'T use raw string SQL without `sqlx::query!()` or `sqlx::query_as!()`",
+        reason: "The query! macros provide compile-time SQL validation and type checking. Raw string queries bypass all safety checks",
+        severity: "important",
+      },
+    );
+  }
+
+  // Actix-web specific
+  if (rustFramework === "actix-web") {
+    enrichment.gotchas.push({
+      rule: "DON'T share mutable state across Actix handlers without web::Data<Mutex<T>>",
+      reason: "Actix runs handlers on multiple threads. Unsynchronized mutable state causes data races. Use web::Data<Arc<Mutex<T>>> or web::Data<Arc<RwLock<T>>>",
+      severity: "critical",
+    });
+  }
+
+  // Axum specific
+  if (rustFramework === "axum") {
+    enrichment.gotchas.push(
+      {
+        rule: "DON'T forget that Axum extractor order matters",
+        reason: "In handler function parameters, body-consuming extractors (Json, Multipart) must come last. Only one body extractor is allowed per handler",
+        severity: "important",
+      },
+      {
+        rule: "DON'T pass large state directly — use Arc<AppState>",
+        reason: "Axum clones state for each request. Without Arc, large state structs are deep-cloned on every request, causing performance issues",
+        severity: "important",
+      },
+    );
+  }
+
+  // Rocket specific
+  if (rustFramework === "rocket") {
+    enrichment.gotchas.push({
+      rule: "DON'T forget to mount routes with `.mount()` in the Rocket builder",
+      reason: "Defined route handlers are not active until mounted. Unmounted routes silently return 404",
+      severity: "important",
+    });
+  }
+
+  return enrichment;
+}

@@ -1,0 +1,22 @@
+import type { LintPreset } from "../types.js";
+
+export const defaultPreset: LintPreset = {
+  name: "default",
+  description: "Balanced preset for most projects",
+  rules: [
+    "token-budget",
+    "token-bloat",
+    "missing-verify",
+    "stale-ref",
+    "style-vs-linter",
+    "vague",
+    "redundant",
+    "no-architecture",
+    "missing-gotchas",
+    "no-imports",
+    "missing-patterns",
+    "import-candidate",
+    "context-efficiency",
+    "duplicate-content",
+  ],
+};

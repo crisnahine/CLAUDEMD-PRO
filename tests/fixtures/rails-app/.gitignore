@@ -1,0 +1,5 @@
+log/
+tmp/
+app/assets/builds/
+.env
+node_modules/

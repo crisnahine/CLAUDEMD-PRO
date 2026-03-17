@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+.env
+tests/fixtures/.tmp-test/
+tests/fixtures/.tmp-config/

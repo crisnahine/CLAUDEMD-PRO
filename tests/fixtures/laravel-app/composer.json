@@ -1,0 +1,16 @@
+{
+  "name": "laravel/example",
+  "type": "project",
+  "require": {
+    "php": "^8.2",
+    "laravel/framework": "^11.0",
+    "laravel/sanctum": "^4.0",
+    "livewire/livewire": "^3.4",
+    "spatie/laravel-permission": "^6.0"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^11.0",
+    "laravel/pint": "^1.14",
+    "phpstan/phpstan": "^1.10"
+  }
+}

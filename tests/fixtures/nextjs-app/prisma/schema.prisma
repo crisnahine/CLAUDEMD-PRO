@@ -1,0 +1,4 @@
+datasource db { provider = "postgresql" }
+model User { id Int @id }
+model Post { id Int @id }
+model Subscription { id Int @id }

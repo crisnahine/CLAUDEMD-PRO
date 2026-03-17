@@ -1,0 +1,25 @@
+name: 'claudemd-pro'
+description: 'Lint and score your CLAUDE.md for effectiveness'
+inputs:
+  file:
+    description: 'Path to CLAUDE.md'
+    required: false
+    default: './CLAUDE.md'
+  threshold:
+    description: 'Minimum score (0-100) to pass'
+    required: false
+    default: '60'
+  strict:
+    description: 'Fail on warnings too'
+    required: false
+    default: 'false'
+outputs:
+  score:
+    description: 'Effectiveness score (0-100)'
+  errors:
+    description: 'Number of lint errors found'
+  warnings:
+    description: 'Number of lint warnings found'
+runs:
+  using: 'node20'
+  main: 'dist/github-action/action.js'
