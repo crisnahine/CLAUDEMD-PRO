@@ -1,10 +1,10 @@
 {
   "name": "claudemd-pro",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Deep codebase-aware CLAUDE.md generator, linter, and effectiveness scorer",
   "type": "module",
   "bin": {
-    "claudemd": "./dist/cli/index.js"
+    "claudemd": "dist/cli/index.js"
   },
   "scripts": {
     "dev": "tsx src/cli/index.ts",
