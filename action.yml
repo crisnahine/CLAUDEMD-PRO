@@ -1,5 +1,9 @@
 name: 'claudemd-pro'
-description: 'Lint and score your CLAUDE.md for effectiveness'
+description: 'Lint and score your CLAUDE.md for effectiveness — deep codebase-aware analysis with 14 rules and effectiveness scoring'
+author: 'crisnahine'
+branding:
+  icon: 'check-circle'
+  color: 'orange'
 inputs:
   file:
     description: 'Path to CLAUDE.md'
