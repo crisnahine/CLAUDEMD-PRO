@@ -27,9 +27,9 @@ Add deep analysis for new frameworks in `src/frameworks/`. Each analyzer should:
 - Return a typed profile the generator can use
 - Include tests with fixture projects in `tests/fixtures/`
 
-Currently implemented: Rails, Next.js, Django, Laravel, Phoenix, Go, Rust, Spring, FastAPI, NestJS, Nuxt, Svelte/SvelteKit, Astro, Remix, Hono.
+Currently implemented: Rails, Next.js, Django, Laravel, Phoenix, Go, Rust, Spring, FastAPI, NestJS, Nuxt, Svelte/SvelteKit, Astro, Remix, Hono, Flutter/Dart, .NET/C#, Kotlin/Ktor, Swift/Vapor, Deno/Fresh, Bun/Elysia.
 
-**New targets:** Flutter/Dart, .NET/C#, Deno, Bun, Elixir non-Phoenix
+**New targets:** Elixir non-Phoenix, Scala/Play, Angular
 
 ### Lint Rules (Medium Impact)
 Add new effectiveness rules in `src/linter/rules/`. Each rule must implement the `LintRule` interface from `src/linter/types.ts`:

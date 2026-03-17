@@ -20,7 +20,7 @@ Your CLAUDE.md is the highest-leverage file in your AI coding workflow. A good o
 - **Compare** — Before/after scoring to measure your CLAUDE.md improvements
 - **MCP Server** — Integrate directly with Claude Desktop and Claude Code (10 tools including deep file scanning)
 - **GitHub Action** — Lint your CLAUDE.md on every push/PR with annotations
-- **Framework-Aware** — Deep analysis for Rails, Next.js, Django, Laravel, Phoenix, Go, Rust, Spring, FastAPI, NestJS, Nuxt, Svelte/SvelteKit, Astro, Remix, Hono, Express.js
+- **Framework-Aware** — Deep analysis for 25+ frameworks: Rails, Next.js, Django, Laravel, Phoenix, Go, Rust, Spring, FastAPI, NestJS, Nuxt, Svelte/SvelteKit, Astro, Remix, Hono, Express.js, Flutter/Dart, .NET/C#, Kotlin/Ktor, Swift/Vapor, Deno/Fresh, Bun/Elysia
 - **Git History Mining** — Extract patterns and conventions from your commit history
 - **CI-Ready** — JSON output, strict mode, exit codes for pipeline integration
 
@@ -206,6 +206,12 @@ If you prefer manual config, add to your Claude Desktop config (`claude_desktop_
 | Astro | `astro` | ✅ | ✅ Pages, layouts, components, integrations |
 | Remix | `remix` | ✅ | ✅ Routes, loaders, actions, meta functions |
 | Hono | `hono` | ✅ | ✅ Routes, middleware, adapters |
+| Flutter/Dart | `flutter` | ✅ | ✅ Widgets, state management, pubspec, platform channels |
+| .NET/C# | `dotnet` | ✅ | ✅ Controllers, EF Core, Razor, middleware, DI |
+| Kotlin/Ktor | `ktor` | ✅ | ✅ Routes, plugins, serialization, Exposed |
+| Swift/Vapor | `vapor` | ✅ | ✅ Routes, Fluent ORM, middleware, Leaf templates |
+| Deno/Fresh | `fresh` | ✅ | ✅ Islands, routes, handlers, Deno.json config |
+| Bun/Elysia | `elysia` | ✅ | ✅ Routes, plugins, decorators, type-safe handlers |
 | Generic | `generic` | ✅ | ✅ Fallback for any project |
 
 ## Lint Rules
@@ -216,20 +222,28 @@ If you prefer manual config, add to your Claude Desktop config (`claude_desktop_
 | `token-bloat` | warning | Single section consumes >25% of total tokens |
 | `missing-verify` | error | No test/lint/typecheck commands |
 | `stale-ref` | error | References files that don't exist |
+| `broken-markdown` | error | Invalid markdown structure (unclosed fences, malformed headers) |
 | `style-vs-linter` | warning | Style rules that belong in a linter config |
 | `vague` | warning | Instructions too vague to be actionable |
 | `redundant` | warning | Info Claude can infer from the codebase |
 | `no-architecture` | warning | Missing project structure map |
 | `duplicate-content` | warning | Repeated content across sections |
+| `empty-section` | warning | Sections with no meaningful content (< 10 non-whitespace chars) |
+| `missing-testing` | warning | Projects with test frameworks should document testing |
+| `inconsistent-pkg-manager` | warning | Commands use wrong package manager for the project |
+| `unresolved-placeholders` | warning | Contains TODO, FIXME, XXX, TBD, or ??? placeholders |
+| `commands-runnable` | warning | Referenced npm/yarn/pnpm scripts exist in package.json |
+| `framework-version-sync` | warning | Stated framework version matches actual manifest |
+| `contradictory-advice` | warning | CLAUDE.md advice contradicts project state |
 | `missing-gotchas` | suggest | No pitfalls/gotchas section |
 | `no-imports` | suggest | Large project without @import structure |
 | `missing-patterns` | suggest | Missing key patterns section for convention-based frameworks |
 | `import-candidate` | suggest | Sections that could be moved to child CLAUDE.md via @import |
 | `context-efficiency` | suggest | Content that could be compressed without losing meaning |
-| `commands-runnable` | warning | Referenced npm/yarn/pnpm scripts exist in package.json |
-| `framework-version-sync` | warning | Stated framework version matches actual manifest |
 | `depth-imbalance` | suggest | Section sizes differ by >10:1 ratio |
-| `contradictory-advice` | warning | CLAUDE.md advice contradicts project state |
+| `missing-db-context` | suggest | Projects with databases should document the data model |
+| `missing-env-setup` | suggest | Projects with .env files should document environment setup |
+| `excessive-nesting` | suggest | Deep heading nesting (4+ levels) can confuse AI context parsing |
 
 Rule presets: `default`, `strict`, `lean` — set via `--preset` flag or `.claudemdrc` config.
 
@@ -246,7 +260,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: crisnahine/CLAUDEMD-PRO@v0.4.1
+      - uses: crisnahine/CLAUDEMD-PRO@v0.5.1
         with:
           threshold: 60
           strict: false
@@ -295,7 +309,7 @@ Also supports `claudemd.config.js`, `claudemd.config.ts`, or a `"claudemd"` key 
 Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 Key areas where help is needed:
-- Framework analyzers for new frameworks (Flutter/Dart, .NET/C#, Deno, Bun, Elixir non-Phoenix)
+- Framework analyzers for new frameworks (Elixir non-Phoenix, Scala/Play, Angular)
 - CI provider analyzers (Jenkins, Azure Pipelines, Bitbucket)
 - Community lint rule plugins
 - Evolve auto-fix improvements

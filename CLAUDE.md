@@ -3,7 +3,7 @@
 ## Critical Context
 - Typescript 5.6.0
 - Node.js >=20.0.0
-- Testing: vitest (~26 tests)
+- Testing: vitest (421 tests across 26 test files)
 
 ## Commands
 ```
