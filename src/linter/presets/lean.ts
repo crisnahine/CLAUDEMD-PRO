@@ -10,5 +10,8 @@ export const leanPreset: LintPreset = {
     "vague",
     "no-architecture",
     "commands-runnable",
+    "broken-markdown",
+    "inconsistent-pkg-manager",
+    "unresolved-placeholders",
   ],
 };

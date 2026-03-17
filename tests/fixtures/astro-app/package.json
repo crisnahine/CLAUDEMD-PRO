@@ -1,0 +1,26 @@
+{
+  "name": "my-astro-site",
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro check && astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "astro": "^4.2.0",
+    "@astrojs/react": "^3.0.9",
+    "@astrojs/tailwind": "^5.1.0",
+    "@astrojs/node": "^8.0.0",
+    "@astrojs/check": "^0.4.1",
+    "@astrojs/sitemap": "^3.0.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "tailwindcss": "^3.4.1"
+  }
+}

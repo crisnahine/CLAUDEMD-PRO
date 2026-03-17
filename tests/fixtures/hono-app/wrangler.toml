@@ -1,0 +1,18 @@
+name = "my-hono-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+API_VERSION = "v1"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "my-hono-db"
+database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+[env.staging]
+name = "my-hono-api-staging"
+
+[env.production]
+name = "my-hono-api-production"

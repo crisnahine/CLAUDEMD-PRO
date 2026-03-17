@@ -22,5 +22,13 @@ export const defaultPreset: LintPreset = {
     "framework-version-sync",
     "depth-imbalance",
     "contradictory-advice",
+    "empty-section",
+    "missing-testing",
+    "missing-db-context",
+    "inconsistent-pkg-manager",
+    "broken-markdown",
+    "missing-env-setup",
+    "excessive-nesting",
+    "unresolved-placeholders",
   ],
 };

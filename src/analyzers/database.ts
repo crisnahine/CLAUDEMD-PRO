@@ -16,6 +16,11 @@ export interface DatabaseProfile {
   hasMigrations: boolean;
   migrationDir: string | null;
   keyModels: string[];
+  // Extended fields
+  hasRedis: boolean;
+  hasNoSQL: boolean; // MongoDB, DynamoDB, etc.
+  migrationCount: number; // number of migration files
+  schemaFile: string | null; // path to schema file if detected
 }
 
 export async function analyzeDatabase(
@@ -29,6 +34,10 @@ export async function analyzeDatabase(
     hasMigrations: false,
     migrationDir: null,
     keyModels: [],
+    hasRedis: false,
+    hasNoSQL: false,
+    migrationCount: 0,
+    schemaFile: null,
   };
 
   // Rails: read database.yml and schema.rb
@@ -46,11 +55,13 @@ export async function analyzeDatabase(
     if (schema) {
       const tables = schema.match(/create_table/g);
       profile.tableCount = tables?.length ?? 0;
+      profile.schemaFile = "db/schema.rb";
     }
 
     if (existsSync(join(rootDir, "db/migrate"))) {
       profile.hasMigrations = true;
       profile.migrationDir = "db/migrate";
+      profile.migrationCount = countFilesInDir(join(rootDir, "db/migrate"), /\.rb$/);
     }
 
     // List model files
@@ -66,6 +77,7 @@ export async function analyzeDatabase(
   // Prisma
   if (stack.keyDeps["@prisma/client"] || existsSync(join(rootDir, "prisma/schema.prisma"))) {
     profile.orm = "Prisma";
+    profile.schemaFile = "prisma/schema.prisma";
     const prismaSchema = readSafe(join(rootDir, "prisma/schema.prisma"));
     if (prismaSchema) {
       if (prismaSchema.includes("postgresql")) profile.adapter = "postgresql";
@@ -79,11 +91,41 @@ export async function analyzeDatabase(
     }
     profile.hasMigrations = existsSync(join(rootDir, "prisma/migrations"));
     profile.migrationDir = "prisma/migrations";
+    if (profile.hasMigrations) {
+      // Prisma migrations are subdirectories containing migration.sql
+      profile.migrationCount = countDirsInDir(join(rootDir, "prisma/migrations"));
+    }
   }
 
   // Drizzle
   if (stack.keyDeps["drizzle-orm"]) {
     profile.orm = "Drizzle";
+    // Detect schema path
+    if (existsSync(join(rootDir, "drizzle"))) {
+      profile.schemaFile = "drizzle";
+    } else if (existsSync(join(rootDir, "src/db/schema.ts"))) {
+      profile.schemaFile = "src/db/schema.ts";
+    }
+  }
+
+  // Knex.js
+  if (stack.keyDeps["knex"]) {
+    profile.orm = profile.orm ?? "Knex";
+  }
+
+  // Objection.js
+  if (stack.keyDeps["objection"]) {
+    profile.orm = profile.orm ?? "Objection.js";
+  }
+
+  // MikroORM
+  if (stack.keyDeps["@mikro-orm/core"]) {
+    profile.orm = profile.orm ?? "MikroORM";
+  }
+
+  // Supabase
+  if (stack.keyDeps["@supabase/supabase-js"]) {
+    profile.adapter = profile.adapter ?? "postgresql"; // Supabase is PostgreSQL-based
   }
 
   // Django (SQLAlchemy / Django ORM)
@@ -125,6 +167,9 @@ export async function analyzeDatabase(
     if (existsSync(join(rootDir, "alembic.ini"))) {
       profile.hasMigrations = true;
       profile.migrationDir = "alembic/versions";
+      if (existsSync(join(rootDir, "alembic/versions"))) {
+        profile.migrationCount = countFilesInDir(join(rootDir, "alembic/versions"), /\.py$/);
+      }
     }
     if (existsSync(join(rootDir, "migrations"))) {
       profile.hasMigrations = true;
@@ -146,6 +191,7 @@ export async function analyzeDatabase(
       profile.migrationDir = "database/migrations";
       const migrations = readdirSync(join(rootDir, "database/migrations")).filter((f) => f.endsWith(".php"));
       profile.tableCount = migrations.filter((f) => f.includes("create_")).length;
+      profile.migrationCount = migrations.length;
     }
     if (existsSync(join(rootDir, "app/Models"))) {
       profile.keyModels = readdirSync(join(rootDir, "app/Models"))
@@ -161,6 +207,7 @@ export async function analyzeDatabase(
     if (existsSync(join(rootDir, "priv/repo/migrations"))) {
       profile.hasMigrations = true;
       profile.migrationDir = "priv/repo/migrations";
+      profile.migrationCount = countFilesInDir(join(rootDir, "priv/repo/migrations"), /\.exs$/);
     }
   }
 
@@ -175,6 +222,7 @@ export async function analyzeDatabase(
     if (existsSync(join(rootDir, "migrations"))) {
       profile.hasMigrations = true;
       profile.migrationDir = "migrations";
+      profile.migrationCount = countDirsInDir(join(rootDir, "migrations"));
     }
   }
 
@@ -184,6 +232,16 @@ export async function analyzeDatabase(
     if (existsSync(join(rootDir, "migrations"))) {
       profile.hasMigrations = true;
       profile.migrationDir = "migrations";
+      profile.migrationCount = countFilesInDir(join(rootDir, "migrations"), /\.sql$/);
+    }
+  }
+
+  // Rust SeaORM
+  if (stack.language === "rust" && stack.keyDeps["sea-orm"]) {
+    profile.orm = profile.orm ?? "SeaORM";
+    if (existsSync(join(rootDir, "migration"))) {
+      profile.hasMigrations = true;
+      profile.migrationDir = "migration";
     }
   }
 
@@ -200,6 +258,33 @@ export async function analyzeDatabase(
     if (existsSync(join(rootDir, "src/main/resources/db/migration"))) {
       profile.hasMigrations = true;
       profile.migrationDir = "src/main/resources/db/migration";
+      profile.migrationCount = countFilesInDir(join(rootDir, "src/main/resources/db/migration"), /\.sql$/);
+    }
+  }
+
+  // ─── Cross-cutting: Redis detection ───────────────────────
+  const redisDeps = ["redis", "ioredis", "@redis/client", "go-redis", "redis-rs"];
+  for (const dep of redisDeps) {
+    if (stack.keyDeps[dep]) {
+      profile.hasRedis = true;
+      break;
+    }
+  }
+  // Ruby redis gem (parsed as keyDep from Gemfile)
+  if (stack.keyDeps["redis"] || stack.keyDeps["sidekiq"]) {
+    profile.hasRedis = true;
+  }
+
+  // ─── Cross-cutting: NoSQL detection (MongoDB, DynamoDB, etc.) ──
+  const nosqlDeps = [
+    "mongoose", "mongodb", "pymongo", "mongoengine", "mongoid",
+    "dynamoose", "@aws-sdk/client-dynamodb", "boto3",
+    "couchbase", "cassandra-driver",
+  ];
+  for (const dep of nosqlDeps) {
+    if (stack.keyDeps[dep]) {
+      profile.hasNoSQL = true;
+      break;
     }
   }
 
@@ -211,5 +296,25 @@ function readSafe(path: string): string | null {
     return existsSync(path) ? readFileSync(path, "utf-8") : null;
   } catch {
     return null;
+  }
+}
+
+/** Count files matching a pattern in a directory (non-recursive). */
+function countFilesInDir(dir: string, pattern: RegExp): number {
+  try {
+    if (!existsSync(dir)) return 0;
+    return readdirSync(dir).filter((f) => pattern.test(f)).length;
+  } catch {
+    return 0;
+  }
+}
+
+/** Count subdirectories in a directory (e.g., Diesel migrations are dirs). */
+function countDirsInDir(dir: string): number {
+  try {
+    if (!existsSync(dir)) return 0;
+    return readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).length;
+  } catch {
+    return 0;
   }
 }

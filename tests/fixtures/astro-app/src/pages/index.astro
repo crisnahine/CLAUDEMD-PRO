@@ -1,0 +1,25 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Card from '../components/Card.astro';
+---
+
+<Layout title="Welcome to My Astro Site">
+  <main>
+    <h1>Welcome to <span class="text-gradient">Astro</span></h1>
+    <p class="instructions">
+      Check out the <code>src/pages</code> directory to get started.
+    </p>
+    <ul role="list" class="link-card-grid">
+      <Card
+        href="/blog"
+        title="Blog"
+        body="Read our latest articles."
+      />
+      <Card
+        href="/about"
+        title="About"
+        body="Learn more about us."
+      />
+    </ul>
+  </main>
+</Layout>

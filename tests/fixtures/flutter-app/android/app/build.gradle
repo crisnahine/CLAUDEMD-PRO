@@ -1,0 +1,15 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+android {
+    namespace "com.example.my_flutter_app"
+    compileSdk 34
+    defaultConfig {
+        applicationId "com.example.my_flutter_app"
+        minSdk 21
+        targetSdk 34
+    }
+}

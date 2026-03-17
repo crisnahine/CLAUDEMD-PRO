@@ -1,0 +1,19 @@
+{
+  "tasks": {
+    "dev": "deno run -A --watch=static/,routes/ dev.ts",
+    "build": "deno run -A dev.ts build",
+    "start": "deno run -A main.ts",
+    "test": "deno test -A"
+  },
+  "imports": {
+    "$fresh/": "https://deno.land/x/fresh@1.6.3/",
+    "fresh": "https://deno.land/x/fresh@1.6.3/",
+    "$std/": "https://deno.land/std@0.208.0/",
+    "preact": "https://esm.sh/preact@10.19.3",
+    "preact/": "https://esm.sh/preact@10.19.3/"
+  },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
+  }
+}

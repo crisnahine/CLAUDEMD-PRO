@@ -32,6 +32,14 @@ import { commandsRunnableRule } from "./rules/commands-runnable.js";
 import { frameworkVersionSyncRule } from "./rules/framework-version-sync.js";
 import { depthImbalanceRule } from "./rules/depth-imbalance.js";
 import { contradictoryAdviceRule } from "./rules/contradictory-advice.js";
+import { emptySectionRule } from "./rules/empty-section.js";
+import { missingTestingRule } from "./rules/missing-testing.js";
+import { missingDbContextRule } from "./rules/missing-db-context.js";
+import { inconsistentPkgManagerRule } from "./rules/inconsistent-pkg-manager.js";
+import { brokenMarkdownRule } from "./rules/broken-markdown.js";
+import { missingEnvSetupRule } from "./rules/missing-env-setup.js";
+import { excessiveNestingRule } from "./rules/excessive-nesting.js";
+import { unresolvedPlaceholdersRule } from "./rules/unresolved-placeholders.js";
 
 // ─── All available rules ────────────────────────────────────
 
@@ -54,6 +62,14 @@ export const ALL_RULES: LintRule[] = [
   frameworkVersionSyncRule,
   depthImbalanceRule,
   contradictoryAdviceRule,
+  emptySectionRule,
+  missingTestingRule,
+  missingDbContextRule,
+  inconsistentPkgManagerRule,
+  brokenMarkdownRule,
+  missingEnvSetupRule,
+  excessiveNestingRule,
+  unresolvedPlaceholdersRule,
 ];
 
 // ─── Rule Runner ────────────────────────────────────────────
@@ -159,6 +175,11 @@ export function calculateScore(
   if (results.some((r) => r.ruleId === "missing-gotchas")) coverage -= 15;
   if (results.some((r) => r.ruleId === "missing-verify")) coverage -= 20;
   if (results.some((r) => r.ruleId === "missing-patterns")) coverage -= 10;
+  const emptySections = results.filter((r) => r.ruleId === "empty-section").length;
+  coverage -= emptySections * 10;
+  if (results.some((r) => r.ruleId === "missing-testing")) coverage -= 15;
+  if (results.some((r) => r.ruleId === "missing-db-context")) coverage -= 5;
+  if (results.some((r) => r.ruleId === "missing-env-setup")) coverage -= 5;
   const sectionCount = (content.match(/^##\s/gm) ?? []).length;
   if (sectionCount < 3) coverage -= 20;
 
@@ -168,11 +189,15 @@ export function calculateScore(
   specificity -= styleIssues * 10;
   const redundantCount = results.filter((r) => r.ruleId === "redundant").length;
   specificity -= redundantCount * 10;
+  const pkgManagerIssues = results.filter((r) => r.ruleId === "inconsistent-pkg-manager").length;
+  specificity -= pkgManagerIssues * 10;
 
-  // Freshness — stale references
+  // Freshness — stale references and unresolved placeholders
   let freshness = 100;
   const staleRefs = results.filter((r) => r.ruleId === "stale-ref").length;
   freshness -= staleRefs * 20;
+  const placeholders = results.filter((r) => r.ruleId === "unresolved-placeholders").length;
+  freshness -= placeholders * 10;
 
   // Anti-Pattern Free — structural anti-patterns
   let antiPatternFree = 100;
@@ -184,6 +209,10 @@ export function calculateScore(
   antiPatternFree -= noImports * 10;
   const importCandidates = results.filter((r) => r.ruleId === "import-candidate").length;
   antiPatternFree -= importCandidates * 5;
+  const brokenMd = results.filter((r) => r.ruleId === "broken-markdown").length;
+  antiPatternFree -= brokenMd * 15;
+  const nestingIssues = results.filter((r) => r.ruleId === "excessive-nesting").length;
+  antiPatternFree -= nestingIssues * 5;
 
   return {
     tokenEfficiency: clamp(tokenEfficiency),

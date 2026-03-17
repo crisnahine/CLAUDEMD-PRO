@@ -61,7 +61,7 @@ export async function analyzeCodebase(
   const stack = await detectStack(rootDir, framework);
 
   // Phase 2: File categorization + existing analyzers in parallel
-  const [architecture, commands, database, testing, gotchas, environment, cicd, gitHistory, fileScan] =
+  let [architecture, commands, database, testing, gotchas, environment, cicd, gitHistory, fileScan] =
     await Promise.all([
       safeAnalyze("architecture", () => analyzeArchitecture(rootDir, stack, exclude)),
       safeAnalyze("commands", () => analyzeCommands(rootDir, stack)),
@@ -75,6 +75,56 @@ export async function analyzeCodebase(
         : safeAnalyze("gitHistory", () => analyzeGitHistory(rootDir)),
       safeAnalyze("fileScan", () => Promise.resolve(scanFiles(rootDir, exclude, stack.framework))),
     ]);
+
+  // Phase 2.5: Framework-specific deep enrichment
+  const enrichment = await safeAnalyze("framework-enrichment", async () => {
+    const { enrichWithFramework } = await import("./framework-enrichment.js");
+    return enrichWithFramework(rootDir, stack.framework, stack.keyDeps);
+  });
+
+  // Merge enrichment into existing profiles
+  if (enrichment) {
+    // Merge gotchas (append framework-specific ones, avoid duplicates)
+    if (enrichment.gotchas?.length) {
+      const existingRules = new Set(gotchas.gotchas?.map(g => g.rule) ?? []);
+      for (const g of enrichment.gotchas) {
+        if (!existingRules.has(g.rule)) {
+          gotchas.gotchas = gotchas.gotchas ?? [];
+          gotchas.gotchas.push(g);
+        }
+      }
+    }
+    // Merge commands (append, avoid duplicate commands)
+    if (enrichment.commands?.length) {
+      const existingCmds = new Set(commands.commands?.map(c => c.command) ?? []);
+      for (const c of enrichment.commands) {
+        if (!existingCmds.has(c.command)) {
+          commands.commands = commands.commands ?? [];
+          commands.commands.push(c);
+        }
+      }
+    }
+    // Merge patterns (append to architecture patterns)
+    if (enrichment.patterns?.length) {
+      const existingPatterns = new Set(architecture.patterns ?? []);
+      for (const p of enrichment.patterns) {
+        if (!existingPatterns.has(p.label)) {
+          architecture.patterns = architecture.patterns ?? [];
+          architecture.patterns.push(p.label);
+        }
+      }
+    }
+    // Merge entry points
+    if (enrichment.entryPoints?.length) {
+      const existingEntries = new Set(architecture.entryPoints ?? []);
+      for (const e of enrichment.entryPoints) {
+        if (!existingEntries.has(e)) {
+          architecture.entryPoints = architecture.entryPoints ?? [];
+          architecture.entryPoints.push(e);
+        }
+      }
+    }
+  }
 
   // Phase 3: Domain deep dive + style extraction (depend on fileScan)
   const [domains, style] = await Promise.all([

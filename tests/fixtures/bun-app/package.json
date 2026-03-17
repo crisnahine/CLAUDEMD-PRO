@@ -1,0 +1,23 @@
+{
+  "name": "bun-elysia-app",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "db:generate": "drizzle-kit generate:pg",
+    "db:migrate": "drizzle-kit push:pg"
+  },
+  "dependencies": {
+    "elysia": "^0.8.0",
+    "@elysiajs/swagger": "^0.8.0",
+    "drizzle-orm": "^0.29.0",
+    "postgres": "^3.4.0"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0",
+    "typescript": "^5.3.0",
+    "drizzle-kit": "^0.20.0"
+  }
+}
