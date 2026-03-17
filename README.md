@@ -22,27 +22,39 @@ Your CLAUDE.md is the highest-leverage file in your AI coding workflow. A good o
 - **Git History Mining** — Extract patterns and conventions from your commit history
 - **CI-Ready** — JSON output, strict mode, exit codes for pipeline integration
 
+## Installation
+
+```bash
+# Run directly with npx (no install needed)
+npx claudemd-pro generate
+
+# Or install globally for the `claudemd` command
+npm install -g claudemd-pro
+```
+
 ## Quick Start
 
 ```bash
 # Generate a CLAUDE.md for your project
-npx claudemd-pro generate
+claudemd generate
 
 # Lint an existing CLAUDE.md
-npx claudemd-pro lint
+claudemd lint
 
 # Quick effectiveness score
-npx claudemd-pro score
+claudemd score
 
 # Token budget breakdown
-npx claudemd-pro budget --optimize
+claudemd budget --optimize
 
 # Detect drift since last generation
-npx claudemd-pro evolve
+claudemd evolve
 
 # Compare before/after
-npx claudemd-pro compare old-CLAUDE.md new-CLAUDE.md
+claudemd compare old-CLAUDE.md new-CLAUDE.md
 ```
+
+> If you didn't install globally, prefix commands with `npx claudemd-pro` instead of `claudemd`.
 
 ## Why Not Just Use `/init`?
 
