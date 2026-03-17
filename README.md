@@ -260,7 +260,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: crisnahine/CLAUDEMD-PRO@v0.5.1
+      - uses: crisnahine/CLAUDEMD-PRO@v0.5.2
         with:
           threshold: 60
           strict: false
