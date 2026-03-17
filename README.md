@@ -244,7 +244,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: crisnahine/CLAUDEMD-PRO@v0.4.0
+      - uses: crisnahine/CLAUDEMD-PRO@v0.4.1
         with:
           threshold: 60
           strict: false

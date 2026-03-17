@@ -1,6 +1,6 @@
 {
   "name": "claudemd-pro",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Deep codebase-aware CLAUDE.md generator, linter, and effectiveness scorer",
   "type": "module",
   "bin": {
