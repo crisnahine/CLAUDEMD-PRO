@@ -32,6 +32,9 @@ export function renderClaudeMd(profile: CodebaseProfile, opts?: RenderOptions): 
       ? `${capitalize(stack.language)} ${stack.languageVersion}`
       : capitalize(stack.language);
     context.push(`- ${lang}`);
+    if (stack.runtimeVersion && stack.runtimeVersion !== stack.languageVersion) {
+      context.push(`- Node.js ${stack.runtimeVersion}`);
+    }
   }
   if (stack.framework !== "unknown") {
     const fw = stack.frameworkVersion
@@ -43,10 +46,18 @@ export function renderClaudeMd(profile: CodebaseProfile, opts?: RenderOptions): 
     const dbLine = database.orm
       ? `${capitalize(database.adapter)} with ${database.orm}`
       : capitalize(database.adapter);
-    context.push(`- Database: ${dbLine}${database.tableCount ? ` (${database.tableCount} tables)` : ""}`);
+    const dbExtras: string[] = [];
+    if (database.tableCount) dbExtras.push(`${database.tableCount} tables`);
+    if (database.migrationCount) dbExtras.push(`${database.migrationCount} migrations`);
+    context.push(`- Database: ${dbLine}${dbExtras.length ? ` (${dbExtras.join(", ")})` : ""}`);
+    if (database.hasRedis) context.push(`- Cache: Redis`);
+    if (database.hasNoSQL) context.push(`- NoSQL: MongoDB/document store detected`);
   }
   if (testing.framework) {
-    context.push(`- Testing: ${testing.framework}${testing.coverageTool ? ` + ${testing.coverageTool}` : ""}`);
+    const testExtras: string[] = [];
+    if (testing.coverageTool) testExtras.push(testing.coverageTool);
+    if (testing.estimatedTestCount && testing.estimatedTestCount > 0) testExtras.push(`~${testing.estimatedTestCount} tests`);
+    context.push(`- Testing: ${testing.framework}${testExtras.length ? ` (${testExtras.join(", ")})` : ""}`);
   }
 
   // Add key deps that Claude should know about
@@ -128,6 +139,21 @@ export function renderClaudeMd(profile: CodebaseProfile, opts?: RenderOptions): 
     sections.push(`## Coding Conventions\n${styleLines.join("\n")}\n`);
   }
 
+  // -- Testing Details (only if rich signals exist) --
+  if (testing.hasSnapshots || testing.hasPropertyTests || testing.hasComponentTests || testing.hasStorybook || testing.hasBenchmarks) {
+    const testDetails: string[] = [];
+    if (testing.testPattern) testDetails.push(`- Pattern: ${testing.testPattern}`);
+    if (testing.hasSnapshots) testDetails.push(`- Snapshot tests in use`);
+    if (testing.hasPropertyTests) testDetails.push(`- Property-based testing in use`);
+    if (testing.hasComponentTests) testDetails.push(`- Component testing in use`);
+    if (testing.hasStorybook) testDetails.push(`- Storybook for component development`);
+    if (testing.hasBenchmarks) testDetails.push(`- Benchmarks configured`);
+    if (database.schemaFile) testDetails.push(`- Schema file: \`${database.schemaFile}\``);
+    if (testDetails.length > 0) {
+      sections.push(`## Testing Details\n${testDetails.join("\n")}\n`);
+    }
+  }
+
   // -- Gotchas --
   if (gotchas.gotchas.length > 0) {
     const gotchaLines = gotchas.gotchas.map((g) => `- ${g.rule} — ${g.reason}`);
@@ -135,22 +161,57 @@ export function renderClaudeMd(profile: CodebaseProfile, opts?: RenderOptions): 
   }
 
   // -- Environment --
-  if (environment.envVars.length > 0) {
+  if (environment.envVars.length > 0 || environment.secretManager) {
+    const envSectionLines: string[] = [];
+
+    // Secret manager
+    if (environment.secretManager) {
+      envSectionLines.push(`- Secret management: ${environment.secretManager}`);
+    }
+
+    // Typed env
+    if (environment.hasTypedEnv) {
+      envSectionLines.push(`- Typed environment: env.d.ts detected`);
+    }
+
+    // Required env vars
     const criticalEnvVars = environment.envVars
       .filter((e) => !e.hasDefault)
       .slice(0, 10);
-
     if (criticalEnvVars.length > 0) {
-      const envLines = criticalEnvVars.map((e) => `- \`${e.name}\` (required, no default)`);
-      sections.push(`## Required Environment Variables\n${envLines.join("\n")}\n`);
+      envSectionLines.push(...criticalEnvVars.map((e) => `- \`${e.name}\` (required, no default)`));
+    }
+
+    // Variable groups summary
+    if (environment.varGroups && Object.keys(environment.varGroups).length > 0) {
+      const groupSummary = Object.entries(environment.varGroups)
+        .map(([prefix, count]) => `${prefix} (${count})`)
+        .join(", ");
+      envSectionLines.push(`- Variable groups: ${groupSummary}`);
+    }
+
+    if (envSectionLines.length > 0) {
+      sections.push(`## Environment\n${envSectionLines.join("\n")}\n`);
     }
   }
 
   // -- CI/CD --
   if (cicd.provider) {
-    sections.push(
-      `## CI/CD\n- Provider: ${cicd.provider}\n- Workflows: ${cicd.workflowFiles.join(", ")}\n`
-    );
+    const ciLines: string[] = [];
+    ciLines.push(`- Provider: ${cicd.provider}`);
+    if (cicd.workflowFiles?.length > 0) {
+      ciLines.push(`- Workflows: ${cicd.workflowFiles.join(", ")}`);
+    }
+    if (cicd.deployTarget) {
+      ciLines.push(`- Deploy target: ${cicd.deployTarget}`);
+    }
+    if (cicd.hasDocker || environment.hasDocker) {
+      ciLines.push(`- Docker: ${cicd.hasDockerCompose || environment.hasDockerCompose ? "Docker Compose" : "Dockerfile"} detected`);
+    }
+    if (cicd.triggers?.length > 0) {
+      ciLines.push(`- Triggers: ${cicd.triggers.join(", ")}`);
+    }
+    sections.push(`## CI/CD\n${ciLines.join("\n")}\n`);
   }
 
   // -- Git Insights (high-churn hotspots, revert-prone files) --

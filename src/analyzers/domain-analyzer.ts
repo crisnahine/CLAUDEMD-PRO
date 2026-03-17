@@ -297,6 +297,15 @@ function readSafe(path: string, maxLines = 150): string | null {
   }
 }
 
+// ─── Infrastructure path parts (not real domains) ────────────
+
+const INFRA_PATH_PARTS = new Set([
+  "token", "config", "util", "utils", "helper", "helpers",
+  "lib", "core", "internal", "common", "shared", "middleware",
+  "plugin", "plugins", "vendor", "log", "session", "settings",
+  "api", "user", "users", "page", "pages", "account", "accounts",
+]);
+
 // ─── Main export ────────────────────────────────────────────
 
 export async function analyzeDomains(
@@ -313,6 +322,12 @@ export async function analyzeDomains(
     ...fileScan.uncategorized,
   ];
 
+  // Detect if project is an application (has routes/controllers/many models)
+  const routeCount = fileScan.categories.routes?.files?.length ?? 0;
+  const controllerCount = fileScan.categories.controllers?.files?.length ?? 0;
+  const modelCount = fileScan.categories.models?.files?.length ?? 0;
+  const isApplication = routeCount > 0 || controllerCount > 0 || modelCount > 2;
+
   // Identify domains from directory names and file names
   const domainMap = new Map<string, { files: string[]; description: string }>();
 
@@ -320,6 +335,8 @@ export async function analyzeDomains(
     const parts = file.split("/");
     for (const part of parts) {
       const lower = part.toLowerCase().replace(/[_-]/g, "");
+      // Skip infrastructure path parts for non-application projects
+      if (!isApplication && INFRA_PATH_PARTS.has(lower)) continue;
       const desc = DOMAIN_KEYWORDS[lower];
       if (desc) {
         const existing = domainMap.get(desc);
@@ -391,6 +408,13 @@ export async function analyzeDomains(
       entities: [...new Set(domainEntities)].slice(0, 5),
       endpoints: [...new Set(domainEndpoints)].slice(0, 5),
     });
+  }
+
+  // Filter out low-signal domains for non-application projects
+  if (!isApplication) {
+    const filtered = domains.filter((d) => d.keyFiles.length >= 3);
+    domains.length = 0;
+    domains.push(...filtered);
   }
 
   // Sort by file count (most prominent domains first)

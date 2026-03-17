@@ -263,6 +263,141 @@ export async function analyzeGotchas(
     );
   }
 
+  // ── C# / .NET ──
+  if (stack.language === "csharp") {
+    gotchas.push(
+      {
+        rule: "DON'T use async void — use async Task",
+        reason: "async void swallows exceptions and breaks error handling",
+        severity: "critical",
+      },
+      {
+        rule: "DON'T instantiate HttpClient directly — use IHttpClientFactory",
+        reason: "Direct HttpClient causes socket exhaustion under load",
+        severity: "critical",
+      },
+      {
+        rule: "ALWAYS use dependency injection for services",
+        reason: "ASP.NET Core DI container is the standard — avoid static service locators",
+        severity: "important",
+      },
+      {
+        rule: "DON'T use Console.WriteLine for logging — use ILogger<T>",
+        reason: "ILogger integrates with structured logging and log providers",
+        severity: "important",
+      },
+    );
+  }
+
+  // ── Kotlin ──
+  if (stack.language === "kotlin") {
+    gotchas.push(
+      {
+        rule: "DON'T use !! (non-null assertion) — handle nulls properly",
+        reason: "!! throws NullPointerException — use ?. or ?: or let {}",
+        severity: "critical",
+      },
+      {
+        rule: "ALWAYS use data class for DTOs and value objects",
+        reason: "data class gives equals, hashCode, copy, toString for free",
+        severity: "important",
+      },
+      {
+        rule: "DON'T use threads directly — use coroutines",
+        reason: "Kotlin coroutines are lighter weight and compose better than threads",
+        severity: "important",
+      },
+      {
+        rule: "ALWAYS prefer sealed class/interface for state modeling",
+        reason: "Sealed types enable exhaustive when expressions",
+        severity: "nice-to-have",
+      },
+    );
+  }
+
+  // ── Dart / Flutter ──
+  if (stack.language === "dart") {
+    gotchas.push(
+      {
+        rule: "ALWAYS use const constructors where possible",
+        reason: "const widgets are cached and skip rebuilds — huge performance win",
+        severity: "critical",
+      },
+      {
+        rule: "DON'T call setState after dispose",
+        reason: "Causes 'setState() called after dispose()' error — check mounted",
+        severity: "critical",
+      },
+      {
+        rule: "ALWAYS use key parameter in list item widgets",
+        reason: "Without keys, Flutter can't diff list items efficiently",
+        severity: "important",
+      },
+      {
+        rule: "DON'T use dynamic type — prefer explicit types",
+        reason: "dynamic bypasses type safety and causes runtime errors",
+        severity: "important",
+      },
+    );
+    generatedDirs.push(".dart_tool/", "build/");
+  }
+
+  // ── Swift / Vapor ──
+  if (stack.language === "swift") {
+    gotchas.push(
+      {
+        rule: "DON'T force unwrap with ! — use if let or guard let",
+        reason: "Force unwrapping crashes at runtime on nil values",
+        severity: "critical",
+      },
+      {
+        rule: "ALWAYS use async/await — not completion handlers",
+        reason: "Modern Swift concurrency is safer and more readable",
+        severity: "important",
+      },
+      {
+        rule: "ALWAYS use Content protocol for JSON codable types",
+        reason: "Vapor's Content protocol handles encoding/decoding automatically",
+        severity: "important",
+      },
+    );
+    generatedDirs.push(".build/");
+  }
+
+  // ── Generic TypeScript fallback ──
+  if (stack.language === "typescript" && gotchas.length === 0) {
+    gotchas.push(
+      {
+        rule: "DON'T use `any` — prefer `unknown` with type narrowing",
+        reason: "`any` disables type checking and defeats the purpose of TypeScript",
+        severity: "important",
+      },
+      {
+        rule: "ALWAYS use .js extension in ESM import paths",
+        reason: "TypeScript requires .js extensions in output-relative imports for ESM",
+        severity: "important",
+      },
+    );
+    // Check tsconfig for strict mode
+    const tsconfig = readSafe(join(rootDir, "tsconfig.json"));
+    if (tsconfig && !tsconfig.includes('"strict"')) {
+      gotchas.push({
+        rule: "ALWAYS enable strict mode in tsconfig.json",
+        reason: "Non-strict mode allows implicit any and null issues to slip through",
+        severity: "nice-to-have",
+      });
+    }
+  }
+
+  // ── Generic JavaScript fallback ──
+  if (stack.language === "javascript" && gotchas.length === 0) {
+    gotchas.push({
+      rule: "ALWAYS use strict mode or ESM modules",
+      reason: "Strict mode catches common bugs like implicit globals and silent errors",
+      severity: "important",
+    });
+  }
+
   // Prisma
   if (stack.keyDeps["@prisma/client"]) {
     generatedDirs.push("node_modules/.prisma/");

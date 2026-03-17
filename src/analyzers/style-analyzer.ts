@@ -50,6 +50,8 @@ function detectNamingConvention(files: string[]): string | null {
   for (const file of files) {
     const name = file.split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
     if (!name || name.startsWith(".")) continue;
+    // Skip single-word ambiguous names (e.g. "index", "types", "main")
+    if (/^[a-z][a-z0-9]*$/.test(name)) continue;
 
     if (/^[a-z][a-zA-Z0-9]*$/.test(name) && /[A-Z]/.test(name)) camelCase++;
     else if (/^[a-z][a-z0-9]*(-[a-z0-9]+)+$/.test(name)) kebabCase++;
@@ -316,9 +318,10 @@ export async function analyzeStyle(
     }
   }
 
-  // Detect naming
+  // Detect naming (include both categorized and uncategorized source files)
   const allSourceFiles = [
     ...Object.values(fileScan.categories).flatMap((c) => c.files),
+    ...fileScan.uncategorized,
   ].filter((f) => sourceExts.has(extname(f)));
   const namingStyle = detectNamingConvention(allSourceFiles);
 

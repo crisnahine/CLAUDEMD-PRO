@@ -157,6 +157,57 @@ const DIR_PURPOSES: Record<string, Record<string, string>> = {
     "src/layers": "Tower middleware layers",
     "migrations": "Database migrations",
   },
+  dotnet: {
+    "Controllers": "API/MVC controllers",
+    "Models": "Data models / EF Core entities",
+    "Views": "Razor views",
+    "Services": "Service layer",
+    "Data": "Database context / repositories",
+    "Migrations": "EF Core migrations",
+    "wwwroot": "Static web assets",
+    "Properties": "Launch settings",
+    "Pages": "Razor Pages",
+    "Hubs": "SignalR hubs",
+  },
+  ktor: {
+    "src/main/kotlin": "Kotlin source code",
+    "src/test/kotlin": "Kotlin tests",
+    "resources": "Application resources",
+    "gradle": "Gradle wrapper",
+  },
+  flutter: {
+    "lib": "Dart source code",
+    "lib/models": "Data models",
+    "lib/screens": "Screen/page widgets",
+    "lib/widgets": "Reusable widgets",
+    "lib/services": "API/service layer",
+    "lib/providers": "State providers",
+    "test": "Widget/unit tests",
+    "android": "Android platform code",
+    "ios": "iOS platform code",
+    "web": "Web platform code",
+  },
+  fresh: {
+    "routes": "Page and API routes",
+    "islands": "Interactive island components",
+    "components": "Static components",
+    "utils": "Utility functions",
+    "static": "Static assets",
+  },
+  elysia: {
+    "src": "TypeScript source code",
+    "src/routes": "Elysia route handlers",
+    "src/db": "Database schema / queries",
+    "test": "Test suite",
+  },
+  vapor: {
+    "Sources/App": "Application source code",
+    "Sources/App/Controllers": "Route controllers",
+    "Sources/App/Models": "Fluent models",
+    "Sources/App/Migrations": "Database migrations",
+    "Tests": "XCTest suite",
+    "Public": "Static public assets",
+  },
   generic: {
     src: "Source code",
     lib: "Library code",
@@ -228,6 +279,22 @@ export async function analyzeArchitecture(
         topLevelDirs.push({ path: subPath, purpose: subPurpose, fileCount: subCount });
       }
     }
+
+    // Generic deep-scan for significant directories
+    const DEEP_SCAN_DIRS = new Set(["src", "lib", "pkg", "internal", "app", "packages"]);
+    if (stack.framework !== "rails" && DEEP_SCAN_DIRS.has(relPath) && fileCount > 10) {
+      try {
+        const subEntries = readdirSync(dirPath, { withFileTypes: true });
+        for (const sub of subEntries) {
+          if (!sub.isDirectory() || excludeSet.has(sub.name) || sub.name.startsWith(".")) continue;
+          const subPath = `${relPath}/${sub.name}`;
+          const subCount = countFiles(join(dirPath, sub.name), 2);
+          if (subCount === 0) continue;
+          const subPurpose = purposes[subPath] ?? inferPurpose(sub.name);
+          topLevelDirs.push({ path: subPath, purpose: subPurpose, fileCount: subCount });
+        }
+      } catch { /* permission denied, etc. */ }
+    }
   }
 
   // Detect architectural patterns
@@ -280,6 +347,22 @@ function inferPurpose(dirName: string): string {
   if (lower.includes("type")) return "Type definitions";
   if (lower.includes("hook")) return "Custom hooks";
   if (lower.includes("store")) return "State management";
+  if (lower === "cli") return "CLI entry points and commands";
+  if (lower === "core") return "Core shared logic";
+  if (lower.includes("analyzer")) return "Analysis modules";
+  if (lower.includes("linter") || lower === "lint") return "Linting rules and engine";
+  if (lower.includes("framework")) return "Framework-specific modules";
+  if (lower === "token") return "Token processing";
+  if (lower === "mcp") return "MCP server integration";
+  if (lower === "action") return "CI/Action integration";
+  if (lower === "rule" || lower === "rules") return "Rule definitions";
+  if (lower === "preset" || lower === "presets") return "Configuration presets";
+  if (lower === "evolve") return "Drift detection";
+  if (lower === "service" || lower === "services") return "Service layer";
+  if (lower === "model" || lower === "models") return "Data models";
+  if (lower === "component" || lower === "components") return "UI components";
+  if (lower === "handler" || lower === "handlers") return "Request handlers";
+  if (lower === "resolver" || lower === "resolvers") return "GraphQL resolvers";
   return "Project directory";
 }
 
@@ -397,6 +480,12 @@ function detectEntryPoints(rootDir: string, stack: StackProfile): string[] {
     actix: ["src/main.rs", "src/lib.rs"],
     axum: ["src/main.rs", "src/lib.rs"],
     rocket: ["src/main.rs"],
+    dotnet: ["Program.cs", "Startup.cs"],
+    ktor: ["src/main/kotlin/Application.kt", "src/main/kotlin/Main.kt"],
+    flutter: ["lib/main.dart"],
+    fresh: ["main.ts", "main.tsx", "dev.ts"],
+    elysia: ["src/index.ts"],
+    vapor: ["Sources/App/configure.swift", "Sources/App/entrypoint.swift"],
     generic: ["src/index.ts", "src/main.ts", "index.ts", "main.ts", "src/index.js"],
   };
 

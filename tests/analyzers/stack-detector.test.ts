@@ -76,6 +76,8 @@ describe("Stack Detector", () => {
       expect(result.language).toBe("typescript");
       expect(result.framework).toBe("nextjs");
       expect(result.frameworkVersion).toBe("14.2.0");
+      expect(result.languageVersion).toBe("5.5.0");
+      expect(result.runtimeVersion).toBeNull();
       expect(result.runtime).toBe("node");
       expect(result.packageManager).toBe("pnpm");
     });

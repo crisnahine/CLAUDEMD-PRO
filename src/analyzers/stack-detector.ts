@@ -6,7 +6,7 @@
  * This is the first analyzer to run — everything else depends on it.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 // ─── Types ──────────────────────────────────────────────────
@@ -21,6 +21,10 @@ export type Language =
   | "php"
   | "rust"
   | "java"
+  | "dart"
+  | "kotlin"
+  | "swift"
+  | "csharp"
   | "unknown";
 
 export type Framework =
@@ -33,6 +37,7 @@ export type Framework =
   | "svelte"
   | "astro"
   | "hono"
+  | "elysia"
   | "express"
   | "fastify"
   | "django"
@@ -44,15 +49,21 @@ export type Framework =
   | "echo"
   | "fiber"
   | "spring"
+  | "ktor"
   | "actix"
   | "axum"
   | "rocket"
+  | "flutter"
+  | "vapor"
+  | "dotnet"
+  | "fresh"
   | "unknown";
 
 export interface StackProfile {
   language: Language;
   framework: Framework;
   languageVersion: string | null;
+  runtimeVersion: string | null;
   frameworkVersion: string | null;
   runtime: string | null; // node, bun, deno, ruby, python, etc.
   packageManager: string | null; // npm, yarn, pnpm, bundler, pip, etc.
@@ -99,6 +110,7 @@ export async function detectStack(
     language: "unknown",
     framework: "unknown",
     languageVersion: null,
+    runtimeVersion: null,
     frameworkVersion: null,
     runtime: null,
     packageManager: null,
@@ -122,6 +134,7 @@ export async function detectStack(
     // Extract Ruby version
     const rubyVersionFile = readText(join(rootDir, ".ruby-version"));
     profile.languageVersion = rubyVersionFile?.trim() ?? null;
+    profile.runtimeVersion = profile.languageVersion;
 
     // Parse key gems
     const gemPattern = /gem\s+['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?/g;
@@ -134,6 +147,24 @@ export async function detectStack(
       profile.framework = "rails";
       profile.frameworkVersion = profile.keyDeps["rails"];
       profile.runtime = "ruby";
+    }
+  }
+
+  // ── Deno (native, not via package.json) ──
+  const denoJson = readJson(join(rootDir, "deno.json")) ?? readJson(join(rootDir, "deno.jsonc"));
+  if (denoJson && !fileExists(rootDir, "package.json") && profile.language === "unknown") {
+    profile.language = "typescript";
+    profile.runtime = "deno";
+    profile.packageManager = "deno";
+    // Parse imports as deps
+    if (denoJson.imports) {
+      for (const [name, url] of Object.entries(denoJson.imports as Record<string, string>)) {
+        profile.keyDeps[name.replace(/\/$/, "")] = url;
+      }
+    }
+    // Detect Fresh framework
+    if (denoJson.imports?.["$fresh/"] || denoJson.imports?.["fresh"]) {
+      profile.framework = "fresh";
     }
   }
 
@@ -172,11 +203,18 @@ export async function detectStack(
       profile.packageManager = "npm";
     }
 
-    // Node version
+    // Runtime (Node) version
     const nvmrc = readText(join(rootDir, ".nvmrc"));
     const nodeVersion = readText(join(rootDir, ".node-version"));
-    profile.languageVersion =
+    profile.runtimeVersion =
       nvmrc?.trim() ?? nodeVersion?.trim() ?? pkgJson.engines?.node ?? null;
+
+    // Language version: use TypeScript dep version for TS, Node version for JS
+    if (profile.language === "typescript" && allDeps["typescript"]) {
+      profile.languageVersion = allDeps["typescript"].replace(/^[\^~>=]+/, "");
+    } else {
+      profile.languageVersion = profile.runtimeVersion;
+    }
 
     // Framework detection (order matters — most specific first)
     if (allDeps["next"]) {
@@ -203,6 +241,9 @@ export async function detectStack(
     } else if (allDeps["hono"]) {
       profile.framework = "hono";
       profile.frameworkVersion = allDeps["hono"];
+    } else if (allDeps["elysia"]) {
+      profile.framework = "elysia";
+      profile.frameworkVersion = allDeps["elysia"];
     } else if (allDeps["fastify"]) {
       profile.framework = "fastify";
       profile.frameworkVersion = allDeps["fastify"];
@@ -232,6 +273,7 @@ export async function detectStack(
     // Extract python version from .python-version or pyproject.toml
     const pyVersion = readText(join(rootDir, ".python-version"));
     profile.languageVersion = pyVersion?.trim() ?? null;
+    profile.runtimeVersion = profile.languageVersion;
 
     // Parse requirements.txt into keyDeps
     if (requirements) {
@@ -276,6 +318,7 @@ export async function detectStack(
     const goMod = readText(join(rootDir, "go.mod"));
     const goVersion = goMod?.match(/^go\s+(\d+\.\d+)/m);
     profile.languageVersion = goVersion?.[1] ?? null;
+    profile.runtimeVersion = profile.languageVersion;
 
     // Parse Go module dependencies
     if (goMod) {
@@ -310,9 +353,12 @@ export async function detectStack(
     if (cargoToml) {
       const rustVersion = cargoToml.match(/rust-version\s*=\s*"(\d+\.\d+)"/);
       profile.languageVersion = rustVersion?.[1] ?? null;
+      profile.runtimeVersion = profile.languageVersion;
 
       // Parse key deps from [dependencies] section
-      const depsSection = cargoToml.match(/\[dependencies\]([\s\S]*?)(?:\[|$)/);
+      // Match until next TOML section header (e.g. [dev-dependencies], [workspace])
+      // but NOT brackets inside values like features = ["derive"]
+      const depsSection = cargoToml.match(/\[dependencies\]\n([\s\S]*?)(?=\n\[[a-zA-Z]|\s*$)/);
       if (depsSection) {
         for (const line of depsSection[1].split("\n")) {
           const depMatch = line.match(/^(\w[\w-]*)\s*=/);
@@ -341,6 +387,7 @@ export async function detectStack(
 
     const javaVersion = readText(join(rootDir, ".java-version"));
     profile.languageVersion = javaVersion?.trim() ?? null;
+    profile.runtimeVersion = profile.languageVersion;
 
     if (pomXml?.includes("spring-boot") || buildGradle?.includes("spring-boot")) {
       profile.framework = "spring";
@@ -369,6 +416,110 @@ export async function detectStack(
     const mixExs = readText(join(rootDir, "mix.exs"));
     if (mixExs?.includes(":phoenix")) {
       profile.framework = "phoenix";
+    }
+  }
+
+  // ── C# / .NET ──
+  if (profile.language === "unknown") {
+    try {
+      const entries = readdirSync(rootDir);
+      const csprojFile = entries.find(e => e.endsWith('.csproj'));
+      if (csprojFile) {
+        profile.language = "csharp";
+        profile.runtime = "dotnet";
+        profile.packageManager = "nuget";
+        // Read .csproj for target framework and package references
+        const csproj = readText(join(rootDir, csprojFile));
+        if (csproj) {
+          const tfm = csproj.match(/<TargetFramework>(net\d+\.?\d*)<\/TargetFramework>/);
+          profile.languageVersion = tfm?.[1] ?? null;
+          profile.runtimeVersion = profile.languageVersion;
+          // Parse PackageReference deps
+          const pkgRefs = csproj.matchAll(/<PackageReference\s+Include="([^"]+)"\s+Version="([^"]+)"/g);
+          for (const m of pkgRefs) profile.keyDeps[m[1]] = m[2];
+          if (csproj.includes("Microsoft.AspNetCore") || csproj.includes("Microsoft.NET.Sdk.Web")) {
+            profile.framework = "dotnet";
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // ── Kotlin (upgrade from Java or detect fresh) ──
+  if (profile.language === "unknown" || (profile.language === "java" && (fileExists(rootDir, "build.gradle.kts") || readText(join(rootDir, "build.gradle"))?.includes("kotlin")))) {
+    const buildGradleKts = readText(join(rootDir, "build.gradle.kts"));
+    const buildGradle = readText(join(rootDir, "build.gradle"));
+    const gradleContent = buildGradleKts ?? buildGradle ?? "";
+    if (gradleContent.includes("kotlin") || gradleContent.includes("org.jetbrains.kotlin")) {
+      profile.language = "kotlin";
+      profile.runtime = "jvm";
+      profile.packageManager = "gradle";
+      const kotlinVersion = gradleContent.match(/kotlin.*?version\s*[=:]\s*['"](\d+\.\d+\.\d+)['"]/)?.[1] ?? null;
+      profile.languageVersion = kotlinVersion;
+      profile.runtimeVersion = profile.languageVersion;
+      // Parse Gradle dependencies: implementation("group:artifact:version")
+      const gradleDeps = gradleContent.matchAll(/(?:implementation|api|compileOnly|runtimeOnly|testImplementation)\s*\(\s*"([^"]+)"\s*\)/g);
+      for (const m of gradleDeps) {
+        const parts = m[1].split(":");
+        if (parts.length >= 2) {
+          const depKey = `${parts[0]}:${parts[1]}`;
+          profile.keyDeps[depKey] = parts[2] ?? "*";
+        }
+      }
+      if (gradleContent.includes("io.ktor")) {
+        profile.framework = "ktor";
+        const ktorVersion = gradleContent.match(/io\.ktor.*?version\s*[=:]\s*['"](\d+\.\d+\.\d+)['"]/)?.[1] ?? null;
+        profile.frameworkVersion = ktorVersion;
+      } else if (gradleContent.includes("spring-boot")) {
+        profile.framework = "spring";
+      }
+    }
+  }
+
+  // ── Dart / Flutter ──
+  if (fileExists(rootDir, "pubspec.yaml") && profile.language === "unknown") {
+    profile.language = "dart";
+    profile.runtime = "dart";
+    profile.packageManager = "pub";
+    const pubspec = readText(join(rootDir, "pubspec.yaml"));
+    if (pubspec) {
+      // Extract SDK version
+      const sdkVersion = pubspec.match(/sdk:\s*['"]?>=?(\d+\.\d+\.\d+)/)?.[1] ?? null;
+      profile.languageVersion = sdkVersion;
+      profile.runtimeVersion = profile.languageVersion;
+      // Parse dependencies
+      const depsMatch = pubspec.match(/dependencies:\s*\n((?:\s+\S.*\n)*)/);
+      if (depsMatch) {
+        for (const line of depsMatch[1].split("\n")) {
+          const depMatch = line.trim().match(/^(\w[\w_-]*):\s*(.*)/);
+          if (depMatch && depMatch[1] !== "sdk") profile.keyDeps[depMatch[1]] = depMatch[2] || "*";
+        }
+      }
+      if (pubspec.includes("flutter:") || pubspec.includes("flutter_test:")) {
+        profile.framework = "flutter";
+      }
+    }
+  }
+
+  // ── Swift / Vapor ──
+  if (fileExists(rootDir, "Package.swift") && profile.language === "unknown") {
+    profile.language = "swift";
+    profile.runtime = "swift";
+    profile.packageManager = "spm";
+    const packageSwift = readText(join(rootDir, "Package.swift"));
+    if (packageSwift) {
+      const swiftVersion = packageSwift.match(/swift-tools-version:\s*(\d+\.\d+)/)?.[1] ?? null;
+      profile.languageVersion = swiftVersion;
+      profile.runtimeVersion = profile.languageVersion;
+      // Parse package dependencies
+      const depPattern = /\.package\s*\(\s*url:\s*"[^"]*\/([^"/]+?)(?:\.git)?"\s*,/g;
+      let depMatch;
+      while ((depMatch = depPattern.exec(packageSwift)) !== null) {
+        profile.keyDeps[depMatch[1]] = "*";
+      }
+      if (packageSwift.includes("vapor")) {
+        profile.framework = "vapor";
+      }
     }
   }
 

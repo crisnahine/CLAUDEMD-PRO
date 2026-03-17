@@ -258,7 +258,6 @@ export async function analyzeCommands(
     const targets = makefile.match(/^([a-zA-Z_-]+):/gm);
     if (targets) {
       for (const target of targets.slice(0, 10)) {
-        // Limit to first 10
         const name = target.replace(":", "");
         commands.push({
           command: `make ${name}`,
@@ -267,6 +266,84 @@ export async function analyzeCommands(
         });
       }
     }
+  }
+
+  // ── Justfile (just command runner) ──
+  const justfilePath = existsSync(join(rootDir, "Justfile")) ? join(rootDir, "Justfile")
+    : existsSync(join(rootDir, "justfile")) ? join(rootDir, "justfile") : null;
+  if (justfilePath) {
+    try {
+      const justfile = readFileSync(justfilePath, "utf-8");
+      const recipes = justfile.matchAll(/^([a-zA-Z_][\w-]*)(?:\s+.*)?:/gm);
+      for (const match of recipes) {
+        const name = match[1];
+        if (name.startsWith("_")) continue; // Skip private recipes
+        commands.push({
+          command: `just ${name}`,
+          description: `Just recipe: ${name}`,
+          category: categorizeScript(name, ""),
+        });
+      }
+    } catch { /* skip */ }
+  }
+
+  // ── Taskfile (taskfile.dev) ──
+  const taskfilePath = existsSync(join(rootDir, "Taskfile.yml")) ? join(rootDir, "Taskfile.yml")
+    : existsSync(join(rootDir, "Taskfile.yaml")) ? join(rootDir, "Taskfile.yaml") : null;
+  if (taskfilePath) {
+    try {
+      const taskfile = readFileSync(taskfilePath, "utf-8");
+      // Parse task names from YAML — look for top-level keys under "tasks:"
+      const tasksMatch = taskfile.match(/^tasks:\s*\n((?:\s+\S.*\n)*)/m);
+      if (tasksMatch) {
+        const taskNames = tasksMatch[1].matchAll(/^\s{2}(\w[\w-]*):/gm);
+        for (const match of taskNames) {
+          commands.push({
+            command: `task ${match[1]}`,
+            description: `Task: ${match[1]}`,
+            category: categorizeScript(match[1], ""),
+          });
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  // ── Deno tasks (from deno.json) ──
+  if (stack.runtime === "deno") {
+    const denoConfigPath = existsSync(join(rootDir, "deno.json")) ? join(rootDir, "deno.json")
+      : existsSync(join(rootDir, "deno.jsonc")) ? join(rootDir, "deno.jsonc") : null;
+    if (denoConfigPath) {
+      try {
+        const denoConfig = JSON.parse(readFileSync(denoConfigPath, "utf-8"));
+        const tasks = denoConfig.tasks ?? {};
+        for (const [name, cmd] of Object.entries(tasks)) {
+          commands.push({
+            command: `deno task ${name}`,
+            description: describeScript(name, cmd as string),
+            category: categorizeScript(name, cmd as string),
+          });
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  // ── Docker Compose services ──
+  const composePath = existsSync(join(rootDir, "docker-compose.yml")) ? join(rootDir, "docker-compose.yml")
+    : existsSync(join(rootDir, "docker-compose.yaml")) ? join(rootDir, "docker-compose.yaml")
+    : existsSync(join(rootDir, "compose.yml")) ? join(rootDir, "compose.yml") : null;
+  if (composePath) {
+    try {
+      const compose = readFileSync(composePath, "utf-8");
+      const services = compose.matchAll(/^\s{2}(\w[\w-]*):\s*$/gm);
+      for (const match of services) {
+        const svc = match[1];
+        commands.push({
+          command: `docker compose up ${svc}`,
+          description: `Start ${svc} service`,
+          category: svc.includes("db") || svc.includes("postgres") || svc.includes("mysql") || svc.includes("redis") ? "db" : "dev",
+        });
+      }
+    } catch { /* skip */ }
   }
 
   return { commands, devServer, hasLinter, hasFormatter, hasTypecheck };
@@ -296,5 +373,22 @@ function describeScript(name: string, cmd: string): string {
   if (cmd.includes("prettier")) return "Run Prettier formatter";
   if (cmd.includes("tsc")) return "TypeScript type checking";
   if (cmd.includes("prisma migrate")) return "Run Prisma migrations";
+  if (cmd.includes("tsx")) return "Run TypeScript with tsx";
+  if (cmd.includes("tsup")) return "Bundle with tsup";
+  if (cmd.includes("turbo")) return "Run Turborepo task";
+  if (cmd.includes("esbuild")) return "Bundle with esbuild";
+  if (cmd.includes("rollup")) return "Bundle with Rollup";
+  if (cmd.includes("webpack")) return "Bundle with webpack";
+  if (cmd.includes("vite build")) return "Build with Vite";
+  if (cmd.includes("vite")) return "Start Vite dev server";
+  if (cmd.includes("nodemon")) return "Run with auto-restart";
+  if (cmd.includes("concurrently")) return "Run multiple commands in parallel";
+  if (cmd.includes("playwright")) return "Run Playwright E2E tests";
+  if (cmd.includes("cypress")) return "Run Cypress E2E tests";
+  if (cmd.includes("storybook")) return "Start Storybook";
+  if (cmd.includes("drizzle-kit")) return "Run Drizzle Kit migrations";
+  if (cmd.includes("wrangler")) return "Cloudflare Workers CLI";
+  if (cmd.includes("biome")) return "Run Biome linter/formatter";
+  if (cmd.includes("lint-staged")) return "Run linters on staged files";
   return `Run ${name}`;
 }
