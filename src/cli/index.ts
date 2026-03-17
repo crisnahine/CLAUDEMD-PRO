@@ -16,7 +16,7 @@ program
   .description(
     "Deep codebase-aware CLAUDE.md generator, linter, and effectiveness scorer"
   )
-  .version("0.4.2");
+  .version("0.5.0");
 
 // ─── generate ───────────────────────────────────────────────
 program

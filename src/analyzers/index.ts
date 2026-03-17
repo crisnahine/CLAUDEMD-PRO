@@ -14,6 +14,9 @@ import { analyzeGotchas, type GotchasProfile } from "./gotchas.js";
 import { analyzeEnvironment, type EnvironmentProfile } from "./env.js";
 import { analyzeCiCd, type CiCdProfile } from "./ci-cd.js";
 import { analyzeGitHistory, type GitHistoryProfile } from "./git-history.js";
+import { scanFiles, type FileScanResult } from "./file-scanner.js";
+import { analyzeDomains, type DomainProfile } from "./domain-analyzer.js";
+import { analyzeStyle, type StyleProfile } from "./style-analyzer.js";
 
 // ─── Unified codebase profile ───────────────────────────────
 export interface CodebaseProfile {
@@ -27,6 +30,9 @@ export interface CodebaseProfile {
   environment: EnvironmentProfile;
   cicd: CiCdProfile;
   gitHistory: GitHistoryProfile;
+  fileScan: FileScanResult;
+  domains: DomainProfile;
+  style: StyleProfile;
   analyzedAt: string;
 }
 
@@ -54,8 +60,8 @@ export async function analyzeCodebase(
   // Phase 1: Stack detection (everything else depends on this)
   const stack = await detectStack(rootDir, framework);
 
-  // Phase 2: Run remaining analyzers in parallel
-  const [architecture, commands, database, testing, gotchas, environment, cicd, gitHistory] =
+  // Phase 2: File categorization + existing analyzers in parallel
+  const [architecture, commands, database, testing, gotchas, environment, cicd, gitHistory, fileScan] =
     await Promise.all([
       safeAnalyze("architecture", () => analyzeArchitecture(rootDir, stack, exclude)),
       safeAnalyze("commands", () => analyzeCommands(rootDir, stack)),
@@ -67,7 +73,14 @@ export async function analyzeCodebase(
       skipGit
         ? Promise.resolve({ isGitRepo: false, insights: [], topChangedFiles: [], recentContributors: 0 } as GitHistoryProfile)
         : safeAnalyze("gitHistory", () => analyzeGitHistory(rootDir)),
+      safeAnalyze("fileScan", () => Promise.resolve(scanFiles(rootDir, exclude, stack.framework))),
     ]);
+
+  // Phase 3: Domain deep dive + style extraction (depend on fileScan)
+  const [domains, style] = await Promise.all([
+    safeAnalyze("domains", () => analyzeDomains(rootDir, stack, fileScan)),
+    safeAnalyze("style", () => analyzeStyle(rootDir, stack, fileScan)),
+  ]);
 
   return {
     rootDir,
@@ -80,6 +93,9 @@ export async function analyzeCodebase(
     environment,
     cicd,
     gitHistory,
+    fileScan,
+    domains,
+    style,
     analyzedAt: new Date().toISOString(),
   };
 }

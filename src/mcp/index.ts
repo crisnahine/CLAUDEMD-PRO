@@ -807,7 +807,7 @@ async function handleReadBatch(params: {
 
 const SERVER_INFO = {
   name: "claudemd-pro",
-  version: "0.4.2",
+  version: "0.5.0",
 };
 
 const CAPABILITIES = {

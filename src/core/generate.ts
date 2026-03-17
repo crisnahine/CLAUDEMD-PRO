@@ -18,7 +18,7 @@ export interface RenderOptions {
  * Render a complete CLAUDE.md string from a CodebaseProfile.
  */
 export function renderClaudeMd(profile: CodebaseProfile, opts?: RenderOptions): string {
-  const { stack, architecture, commands, database, testing, gotchas, environment, cicd, gitHistory } = profile;
+  const { stack, architecture, commands, database, testing, gotchas, environment, cicd, gitHistory, domains, style } = profile;
   const sections: string[] = [];
 
   // -- Header --
@@ -101,6 +101,31 @@ export function renderClaudeMd(profile: CodebaseProfile, opts?: RenderOptions): 
   if (architecture.patterns.length > 0) {
     const patternLines = architecture.patterns.map((p) => `- ${p}`);
     sections.push(`## Key Patterns\n${patternLines.join("\n")}\n`);
+  }
+
+  // -- What This App Does (Domain Deep Dive) --
+  if (domains?.domains?.length > 0) {
+    const domainLines: string[] = [];
+    for (const domain of domains.domains) {
+      let line = `- **${domain.name}**`;
+      if (domain.entities.length > 0) {
+        line += ` — entities: ${domain.entities.join(", ")}`;
+      }
+      if (domain.endpoints.length > 0) {
+        line += ` (${domain.endpoints.slice(0, 3).join(", ")})`;
+      }
+      domainLines.push(line);
+    }
+    if (domains.entityCount > 0) {
+      domainLines.push(`\n_${domains.entityCount} entities across ${domains.domains.length} domains_`);
+    }
+    sections.push(`## What This App Does\n${domainLines.join("\n")}\n`);
+  }
+
+  // -- Coding Conventions (Style Guide) --
+  if (style?.conventions?.length > 0) {
+    const styleLines = style.conventions.map((c) => `- **${c.category}:** ${c.pattern}`);
+    sections.push(`## Coding Conventions\n${styleLines.join("\n")}\n`);
   }
 
   // -- Gotchas --

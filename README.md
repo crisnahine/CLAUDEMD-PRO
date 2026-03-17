@@ -11,7 +11,9 @@ Your CLAUDE.md is the highest-leverage file in your AI coding workflow. A good o
 
 ## Features
 
-- **Generate** — Analyze your codebase and produce a battle-tested CLAUDE.md
+- **Generate** — 6-phase deep analysis: stack → file scan → architecture → domain deep dive → style extraction → CLAUDE.md
+- **Domain Deep Dive** — Identifies business domains, entities, and API endpoints from your actual source code
+- **Style Extraction** — Detects project-specific coding conventions (naming, imports, patterns) — not generic advice
 - **Lint** — Score your existing CLAUDE.md on *effectiveness*, not just structure
 - **Budget** — See exactly where your tokens are going and how to optimize
 - **Evolve** — Detect codebase drift and keep your CLAUDE.md in sync automatically

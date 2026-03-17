@@ -21,7 +21,7 @@ npm run lint                         # ESLint
 ```
 /src/cli/          # CLI entry + command handlers (generate, lint, budget, evolve, compare, serve, install)
 /src/core/         # Shared logic modules reused by CLI and MCP (generate, lint)
-/src/analyzers/    # Codebase analysis modules (stack, arch, db, testing, gotchas, git-history, file-scanner, file-reader, etc.)
+/src/analyzers/    # Codebase analysis modules (stack, arch, db, testing, gotchas, git-history, file-scanner, file-reader, domain-analyzer, style-analyzer)
 /src/frameworks/   # Framework-specific deep analyzers (13 frameworks)
 /src/linter/       # Modular lint rules + scoring engine
 /src/linter/rules/ # Individual lint rule modules (18 rules)
@@ -38,6 +38,7 @@ npm run lint                         # ESLint
 ## Key Patterns
 - Each analyzer is independent and returns a typed profile interface
 - Analyzers run in parallel via Promise.all with safeAnalyze wrapper
+- 6-phase pipeline: stack → file scan → architecture → domain deep dive → style extraction → render
 - Generator renders sections from the unified CodebaseProfile
 - Lint rules are modular: each rule is a LintRule object in /src/linter/rules/
 - Rule presets control which rules run and their severity
