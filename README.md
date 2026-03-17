@@ -18,7 +18,7 @@ Your CLAUDE.md is the highest-leverage file in your AI coding workflow. A good o
 - **Compare** — Before/after scoring to measure your CLAUDE.md improvements
 - **MCP Server** — Integrate directly with Claude Desktop and Claude Code
 - **GitHub Action** — Lint your CLAUDE.md on every push/PR with annotations
-- **Framework-Aware** — Deep analysis for Rails, Next.js, Django, Laravel, Phoenix, Go, Rust, Spring, FastAPI
+- **Framework-Aware** — Deep analysis for Rails, Next.js, Django, Laravel, Phoenix, Go, Rust, Spring, FastAPI, NestJS, Nuxt, Svelte/SvelteKit, Astro, Remix, Hono, Express.js
 - **Git History Mining** — Extract patterns and conventions from your commit history
 - **CI-Ready** — JSON output, strict mode, exit codes for pipeline integration
 
@@ -82,7 +82,7 @@ Analyzes your codebase and generates a comprehensive CLAUDE.md.
 
 ```bash
 claudemd generate                    # Basic generation
-claudemd generate --framework rails  # Force framework detection
+claudemd generate --framework rails  # Force framework (see list below)
 claudemd generate --modular          # Generate with @import structure
 claudemd generate --dry-run          # Preview without writing
 claudemd generate --merge            # Generate alongside existing file
@@ -154,19 +154,25 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
 
 ## Supported Frameworks
 
-| Framework | Detection | Deep Analysis |
-|-----------|-----------|---------------|
-| Ruby on Rails | ✅ | ✅ Models, routes, services, jobs, Hotwire |
-| Next.js | ✅ | ✅ App Router, Pages, API routes |
-| Django | ✅ | ✅ Models, views, URLs, settings, management commands |
-| Laravel | ✅ | ✅ Eloquent, routes, Blade, Artisan, queues |
-| Phoenix | ✅ | ✅ Contexts, LiveView, Ecto, channels |
-| Go (Gin/Echo/Fiber) | ✅ | ✅ Handlers, middleware, modules |
-| Rust (Actix/Axum) | ✅ | ✅ Modules, traits, Cargo workspace |
-| Spring Boot | ✅ | ✅ Controllers, repositories, services, entities |
-| FastAPI | ✅ | ✅ Routers, Pydantic models, dependencies |
-| Express.js | ✅ | ✅ Fallback via generic analysis |
-| Generic | ✅ | ✅ Fallback for any project |
+| Framework | `--framework` | Detection | Deep Analysis |
+|-----------|---------------|-----------|---------------|
+| Ruby on Rails | `rails` | ✅ | ✅ Models, routes, services, jobs, Hotwire |
+| Next.js | `nextjs` | ✅ | ✅ App Router, Pages, API routes |
+| Django | `django` | ✅ | ✅ Models, views, URLs, settings, management commands |
+| Laravel | `laravel` | ✅ | ✅ Eloquent, routes, Blade, Artisan, queues |
+| Phoenix | `phoenix` | ✅ | ✅ Contexts, LiveView, Ecto, channels |
+| Go (Gin/Echo/Fiber) | `go` | ✅ | ✅ Handlers, middleware, modules |
+| Rust (Actix/Axum) | `rust` | ✅ | ✅ Modules, traits, Cargo workspace |
+| Spring Boot | `spring` | ✅ | ✅ Controllers, repositories, services, entities |
+| FastAPI | `fastapi` | ✅ | ✅ Routers, Pydantic models, dependencies |
+| Express.js | `express` | ✅ | ✅ Routes, middleware, error handling |
+| NestJS | `nestjs` | ✅ | ✅ Controllers, modules, providers, guards, interceptors |
+| Nuxt | `nuxt` | ✅ | ✅ Pages, composables, server routes, Nitro |
+| Svelte/SvelteKit | `sveltekit` | ✅ | ✅ Routes, load functions, hooks, adapters |
+| Astro | `astro` | ✅ | ✅ Pages, layouts, components, integrations |
+| Remix | `remix` | ✅ | ✅ Routes, loaders, actions, meta functions |
+| Hono | `hono` | ✅ | ✅ Routes, middleware, adapters |
+| Generic | `generic` | ✅ | ✅ Fallback for any project |
 
 ## Lint Rules
 
@@ -186,6 +192,10 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
 | `missing-patterns` | suggest | Missing key patterns section for convention-based frameworks |
 | `import-candidate` | suggest | Sections that could be moved to child CLAUDE.md via @import |
 | `context-efficiency` | suggest | Content that could be compressed without losing meaning |
+| `commands-runnable` | warning | Referenced npm/yarn/pnpm scripts exist in package.json |
+| `framework-version-sync` | warning | Stated framework version matches actual manifest |
+| `depth-imbalance` | suggest | Section sizes differ by >10:1 ratio |
+| `contradictory-advice` | warning | CLAUDE.md advice contradicts project state |
 
 Rule presets: `default`, `strict`, `lean` — set via `--preset` flag or `.claudemdrc` config.
 
@@ -202,13 +212,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: crisnahine/CLAUDEMD-PRO@v0.2.1
+      - uses: crisnahine/CLAUDEMD-PRO@v0.3.0
         with:
           threshold: 60
           strict: false
+          check-drift: true
+          comment-on-pr: true
 ```
 
-The action outputs `score`, `errors`, and `warnings` for use in subsequent steps, and annotates your PR with inline lint results.
+The action outputs `score`, `errors`, `warnings`, and `drift-items` for use in subsequent steps, and annotates your PR with inline lint results.
 
 ## CI/CD Integration
 
@@ -242,14 +254,15 @@ Create a `.claudemdrc` in your project root:
 }
 ```
 
-Also supports `claudemd.config.js`, `claudemd.config.ts`, or a `"claudemd"` key in `package.json` via [cosmiconfig](https://github.com/cosmiconfig/cosmiconfig).
+Also supports `claudemd.config.js`, `claudemd.config.ts`, or a `"claudemd"` key in `package.json` via [cosmiconfig](https://github.com/cosmiconfig/cosmiconfig). Invalid config values are validated at load time with helpful warnings.
 
 ## Contributing
 
 Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 Key areas where help is needed:
-- Framework analyzers for new frameworks (Svelte/SvelteKit, Nuxt, Remix, Astro, NestJS, Hono)
+- Framework analyzers for new frameworks (Flutter/Dart, .NET/C#, Deno, Bun, Elixir non-Phoenix)
+- CI provider analyzers (Jenkins, Azure Pipelines, Bitbucket)
 - Community lint rule plugins
 - Evolve auto-fix improvements
 - Additional test fixtures

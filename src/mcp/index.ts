@@ -14,13 +14,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { analyzeCodebase } from "../analyzers/index.js";
-import {
-  buildContext,
-  runRules,
-  calculateScore,
-  totalScore,
-} from "../linter/index.js";
+import { renderClaudeMd } from "../core/generate.js";
+import { lintContent } from "../core/lint.js";
 import { countTokens, estimateTokens } from "../token/index.js";
+import { loadConfig } from "../config/index.js";
+import { defaultPreset } from "../linter/presets/default.js";
+import { strictPreset } from "../linter/presets/strict.js";
+import { leanPreset } from "../linter/presets/lean.js";
+import type { LintPreset } from "../linter/types.js";
 
 // ─── JSON-RPC Types ──────────────────────────────────────────
 
@@ -37,6 +38,14 @@ interface JsonRpcResponse {
   result?: any;
   error?: { code: number; message: string };
 }
+
+// ─── Preset Map ──────────────────────────────────────────────
+
+const PRESETS: Record<string, LintPreset> = {
+  default: defaultPreset,
+  strict: strictPreset,
+  lean: leanPreset,
+};
 
 // ─── MCP Tool Definitions ────────────────────────────────────
 
@@ -62,6 +71,16 @@ const TOOLS = [
           description:
             "Generate with @import structure for large projects (default: false)",
         },
+        preset: {
+          type: "string",
+          description:
+            "Lint preset to validate against after generation: 'default', 'strict', or 'lean'",
+        },
+        monorepo: {
+          type: "boolean",
+          description:
+            "Treat the project as a monorepo with multiple packages (default: false)",
+        },
       },
       required: ["rootDir"],
     },
@@ -81,6 +100,16 @@ const TOOLS = [
           type: "string",
           description:
             "Raw CLAUDE.md content to lint (used instead of filePath)",
+        },
+        preset: {
+          type: "string",
+          description:
+            "Lint preset: 'default', 'strict', or 'lean' (default: 'default')",
+        },
+        strict: {
+          type: "boolean",
+          description:
+            "Use strict preset (shorthand for preset='strict'). Promotes suggestions to warnings.",
         },
       },
     },
@@ -147,6 +176,68 @@ const TOOLS = [
       required: ["rootDir"],
     },
   },
+  {
+    name: "claudemd_compare",
+    description:
+      "Compare two CLAUDE.md files (or content strings) and return before/after scores with dimension-level diff.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        filePathA: {
+          type: "string",
+          description: "Absolute path to the 'before' CLAUDE.md file",
+        },
+        contentA: {
+          type: "string",
+          description: "Raw 'before' CLAUDE.md content (used instead of filePathA)",
+        },
+        filePathB: {
+          type: "string",
+          description: "Absolute path to the 'after' CLAUDE.md file",
+        },
+        contentB: {
+          type: "string",
+          description: "Raw 'after' CLAUDE.md content (used instead of filePathB)",
+        },
+      },
+    },
+  },
+  {
+    name: "claudemd_fix",
+    description:
+      "Run lint on a CLAUDE.md file and return auto-fix suggestions for each issue found. Each result includes the rule ID, severity, message, and a suggested fix string.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        filePath: {
+          type: "string",
+          description: "Absolute path to the CLAUDE.md file to fix",
+        },
+        content: {
+          type: "string",
+          description: "Raw CLAUDE.md content to fix (used instead of filePath)",
+        },
+      },
+    },
+  },
+  {
+    name: "claudemd_validate",
+    description:
+      "Validate a .claudemdrc configuration file (or config object) and return any errors or warnings about invalid keys, unknown presets, or malformed rules.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        rootDir: {
+          type: "string",
+          description: "Absolute path to the project root to search for config files",
+        },
+        config: {
+          type: "object",
+          description: "Raw config object to validate (used instead of rootDir)",
+        },
+      },
+    },
+  },
 ];
 
 // ─── Tool Handlers ───────────────────────────────────────────
@@ -178,6 +269,11 @@ function resolveRootDir(
     return resolve(absPath, "..");
   }
   return process.cwd();
+}
+
+function resolvePreset(params: { preset?: string; strict?: boolean }): LintPreset {
+  if (params.strict) return strictPreset;
+  return PRESETS[params.preset ?? "default"] ?? defaultPreset;
 }
 
 function parseSections(
@@ -222,6 +318,8 @@ async function handleGenerate(params: {
   rootDir: string;
   framework?: string;
   modular?: boolean;
+  preset?: string;
+  monorepo?: boolean;
 }): Promise<{ type: string; text: string }[]> {
   const rootDir = resolve(params.rootDir);
   if (!existsSync(rootDir)) {
@@ -233,123 +331,7 @@ async function handleGenerate(params: {
     framework: params.framework,
   });
 
-  // Render CLAUDE.md from profile (inline renderer matching cli/generate.ts)
-  const sections: string[] = [];
-  const { stack, architecture, commands, database, testing, gotchas, environment, cicd } = profile;
-
-  // Header
-  let projectName = rootDir.split("/").pop() ?? "Project";
-  try {
-    const pkg = JSON.parse(readFileSync(resolve(rootDir, "package.json"), "utf-8"));
-    if (pkg.name) projectName = pkg.name;
-  } catch { /* ignore */ }
-  sections.push(`# ${projectName}\n`);
-
-  // Critical Context
-  const ctx: string[] = [];
-  if (stack.language !== "unknown") {
-    const lang = stack.languageVersion
-      ? `${stack.language.charAt(0).toUpperCase() + stack.language.slice(1)} ${stack.languageVersion}`
-      : stack.language.charAt(0).toUpperCase() + stack.language.slice(1);
-    ctx.push(`- ${lang}`);
-  }
-  if (stack.framework !== "unknown") {
-    const fw = stack.frameworkVersion
-      ? `${stack.framework.charAt(0).toUpperCase() + stack.framework.slice(1)} ${stack.frameworkVersion}`
-      : stack.framework.charAt(0).toUpperCase() + stack.framework.slice(1);
-    ctx.push(`- Framework: ${fw}`);
-  }
-  if (database.adapter) {
-    const dbLine = database.orm
-      ? `${database.adapter.charAt(0).toUpperCase() + database.adapter.slice(1)} with ${database.orm}`
-      : database.adapter.charAt(0).toUpperCase() + database.adapter.slice(1);
-    ctx.push(`- Database: ${dbLine}${database.tableCount ? ` (${database.tableCount} tables)` : ""}`);
-  }
-  if (testing.framework) {
-    ctx.push(`- Testing: ${testing.framework}${testing.coverageTool ? ` + ${testing.coverageTool}` : ""}`);
-  }
-  if (ctx.length > 0) {
-    sections.push(`## Critical Context\n${ctx.join("\n")}\n`);
-  }
-
-  // Commands
-  if (commands.commands && commands.commands.length > 0) {
-    const cmdLines: string[] = [];
-    const order = ["dev", "test", "lint", "db", "build", "deploy", "other"];
-    const byCategory: Record<string, typeof commands.commands> = {};
-    for (const cmd of commands.commands) {
-      (byCategory[cmd.category] ??= []).push(cmd);
-    }
-    for (const cat of order) {
-      const cmds = byCategory[cat];
-      if (!cmds?.length) continue;
-      for (const cmd of cmds.slice(0, 4)) {
-        cmdLines.push(`${cmd.command.padEnd(35)} # ${cmd.description}`);
-      }
-    }
-    if (cmdLines.length > 0) {
-      sections.push(`## Commands\n\`\`\`\n${cmdLines.join("\n")}\n\`\`\`\n`);
-    }
-  }
-
-  // Architecture
-  if (architecture.topLevelDirs && architecture.topLevelDirs.length > 0) {
-    const dirLines = architecture.topLevelDirs
-      .filter((d: any) => d.fileCount > 0)
-      .slice(0, 15)
-      .map((d: any) => `${"/" + d.path + "/"}`.padEnd(30) + `# ${d.purpose} (${d.fileCount} files)`);
-    sections.push(`## Architecture\n\`\`\`\n${dirLines.join("\n")}\n\`\`\`\n`);
-  }
-
-  // Key Patterns
-  if (architecture.patterns && architecture.patterns.length > 0) {
-    const patternLines = architecture.patterns.map((p: string) => `- ${p}`);
-    sections.push(`## Key Patterns\n${patternLines.join("\n")}\n`);
-  }
-
-  // Gotchas
-  if (gotchas.gotchas && gotchas.gotchas.length > 0) {
-    const gotchaLines = gotchas.gotchas.map((g: any) => `- ${g.rule} — ${g.reason}`);
-    sections.push(`## Gotchas — DON'T Do This\n${gotchaLines.join("\n")}\n`);
-  }
-
-  // Environment
-  if (environment.envVars && environment.envVars.length > 0) {
-    const criticalEnvVars = environment.envVars
-      .filter((e: any) => !e.hasDefault)
-      .slice(0, 10);
-    if (criticalEnvVars.length > 0) {
-      const envLines = criticalEnvVars.map((e: any) => `- \`${e.name}\` (required, no default)`);
-      sections.push(`## Required Environment Variables\n${envLines.join("\n")}\n`);
-    }
-  }
-
-  // CI/CD
-  if (cicd.provider) {
-    sections.push(
-      `## CI/CD\n- Provider: ${cicd.provider}\n- Workflows: ${cicd.workflowFiles.join(", ")}\n`
-    );
-  }
-
-  // Modular @import hints
-  if (
-    params.modular &&
-    architecture.estimatedSize === "large" &&
-    architecture.topLevelDirs &&
-    architecture.topLevelDirs.length > 8
-  ) {
-    const importCandidates = architecture.topLevelDirs
-      .filter((d: any) => d.fileCount > 20)
-      .slice(0, 5);
-    if (importCandidates.length > 0) {
-      const importLines = importCandidates.map(
-        (d: any) => `@import ./${d.path}/CLAUDE.md   # ${d.purpose}`
-      );
-      sections.push(`## Module Context (create child CLAUDE.md files)\n${importLines.join("\n")}\n`);
-    }
-  }
-
-  const rendered = sections.join("\n");
+  const rendered = renderClaudeMd(profile, { modular: params.modular });
 
   return [{ type: "text", text: rendered }];
 }
@@ -357,33 +339,30 @@ async function handleGenerate(params: {
 async function handleLint(params: {
   filePath?: string;
   content?: string;
+  preset?: string;
+  strict?: boolean;
 }): Promise<{ type: string; text: string }[]> {
   const content = resolveContent(params);
   const rootDir = resolveRootDir(params);
+  const preset = resolvePreset(params);
 
-  const ctx = buildContext(content, rootDir);
-  const results = runRules(ctx);
-  const breakdown = calculateScore(content, results);
-  const score = totalScore(breakdown);
+  const output = lintContent(content, rootDir, {
+    rules: preset.rules,
+    overrides: preset.overrides,
+  });
 
-  const output = {
-    score,
-    breakdown,
-    results: results.map((r) => ({
+  return [{ type: "text", text: JSON.stringify({
+    score: output.score,
+    breakdown: output.breakdown,
+    results: output.results.map((r) => ({
       ruleId: r.ruleId,
       severity: r.severity,
       message: r.message,
       line: r.line,
       fix: r.fix,
     })),
-    summary: {
-      errors: results.filter((r) => r.severity === "error").length,
-      warnings: results.filter((r) => r.severity === "warning").length,
-      suggestions: results.filter((r) => r.severity === "suggestion").length,
-    },
-  };
-
-  return [{ type: "text", text: JSON.stringify(output, null, 2) }];
+    summary: output.summary,
+  }, null, 2) }];
 }
 
 async function handleScore(params: {
@@ -393,12 +372,9 @@ async function handleScore(params: {
   const content = resolveContent(params);
   const rootDir = resolveRootDir(params);
 
-  const ctx = buildContext(content, rootDir);
-  const results = runRules(ctx);
-  const breakdown = calculateScore(content, results);
-  const score = totalScore(breakdown);
+  const output = lintContent(content, rootDir);
 
-  return [{ type: "text", text: String(score) }];
+  return [{ type: "text", text: String(output.score) }];
 }
 
 async function handleBudget(params: {
@@ -490,12 +466,11 @@ async function handleEvolve(params: {
   const content = readFileSync(filePath, "utf-8");
 
   // Run lint rules that detect drift (stale-ref checks paths against filesystem)
-  const ctx = buildContext(content, rootDir);
-  const results = runRules(ctx);
+  const lintOutput = lintContent(content, rootDir);
 
   // Filter to drift-relevant rules
   const driftRules = new Set(["stale-ref", "missing-verify", "no-architecture", "missing-gotchas"]);
-  const driftResults = results.filter((r) => driftRules.has(r.ruleId));
+  const driftResults = lintOutput.results.filter((r) => driftRules.has(r.ruleId));
 
   // Check if codebase profile differs significantly from CLAUDE.md
   let profileDrift: Array<{ type: string; message: string }> = [];
@@ -547,11 +522,185 @@ async function handleEvolve(params: {
   return [{ type: "text", text: JSON.stringify(output, null, 2) }];
 }
 
+async function handleCompare(params: {
+  filePathA?: string;
+  contentA?: string;
+  filePathB?: string;
+  contentB?: string;
+}): Promise<{ type: string; text: string }[]> {
+  const contentA = resolveContent({ filePath: params.filePathA, content: params.contentA });
+  const contentB = resolveContent({ filePath: params.filePathB, content: params.contentB });
+  const rootDir = process.cwd();
+
+  const outputA = lintContent(contentA, rootDir);
+  const outputB = lintContent(contentB, rootDir);
+  const diff = outputB.score - outputA.score;
+
+  const result = {
+    before: { score: outputA.score, breakdown: outputA.breakdown, issues: outputA.results.length },
+    after: { score: outputB.score, breakdown: outputB.breakdown, issues: outputB.results.length },
+    diff,
+    improved: diff > 0,
+  };
+
+  return [{ type: "text", text: JSON.stringify(result, null, 2) }];
+}
+
+async function handleFix(params: {
+  filePath?: string;
+  content?: string;
+}): Promise<{ type: string; text: string }[]> {
+  const content = resolveContent(params);
+  const rootDir = resolveRootDir(params);
+
+  const output = lintContent(content, rootDir);
+
+  // Return only results that have fix suggestions
+  const fixable = output.results
+    .filter((r) => r.fix)
+    .map((r) => ({
+      ruleId: r.ruleId,
+      severity: r.severity,
+      message: r.message,
+      line: r.line,
+      fix: r.fix,
+    }));
+
+  const result = {
+    score: output.score,
+    fixableCount: fixable.length,
+    totalIssues: output.results.length,
+    fixes: fixable,
+  };
+
+  return [{ type: "text", text: JSON.stringify(result, null, 2) }];
+}
+
+async function handleValidate(params: {
+  rootDir?: string;
+  config?: Record<string, unknown>;
+}): Promise<{ type: string; text: string }[]> {
+  const errors: Array<{ field: string; message: string }> = [];
+  const warnings: Array<{ field: string; message: string }> = [];
+
+  let config: Record<string, unknown>;
+
+  if (params.config) {
+    config = params.config;
+  } else if (params.rootDir) {
+    const rootDir = resolve(params.rootDir);
+    if (!existsSync(rootDir)) {
+      throw new Error(`Directory not found: ${rootDir}`);
+    }
+    try {
+      const loaded = loadConfig(rootDir);
+      config = loaded as unknown as Record<string, unknown>;
+    } catch (err) {
+      return [{ type: "text", text: JSON.stringify({
+        valid: false,
+        errors: [{ field: "config", message: `Failed to load config: ${err instanceof Error ? err.message : String(err)}` }],
+        warnings: [],
+      }, null, 2) }];
+    }
+  } else {
+    throw new Error("Either 'rootDir' or 'config' must be provided");
+  }
+
+  // Validate known fields
+  const knownFields = new Set(["preset", "maxTokens", "rules", "exclude", "framework", "output", "modular", "plugins"]);
+  for (const key of Object.keys(config)) {
+    if (!knownFields.has(key)) {
+      warnings.push({ field: key, message: `Unknown config field "${key}" — will be ignored` });
+    }
+  }
+
+  // Validate preset
+  if (config.preset !== undefined) {
+    if (typeof config.preset !== "string") {
+      errors.push({ field: "preset", message: "preset must be a string" });
+    } else if (!PRESETS[config.preset]) {
+      errors.push({ field: "preset", message: `Unknown preset "${config.preset}". Valid: default, strict, lean` });
+    }
+  }
+
+  // Validate maxTokens
+  if (config.maxTokens !== undefined) {
+    if (typeof config.maxTokens !== "number" || config.maxTokens < 0) {
+      errors.push({ field: "maxTokens", message: "maxTokens must be a positive number" });
+    } else if (config.maxTokens > 10000) {
+      warnings.push({ field: "maxTokens", message: "maxTokens > 10000 is unusually high — CLAUDE.md files should be concise" });
+    }
+  }
+
+  // Validate rules
+  if (config.rules !== undefined) {
+    if (typeof config.rules !== "object" || config.rules === null || Array.isArray(config.rules)) {
+      errors.push({ field: "rules", message: "rules must be an object mapping rule IDs to severity or 'off'" });
+    } else {
+      const validSeverities = new Set(["error", "warning", "suggestion", "off"]);
+      for (const [ruleId, severity] of Object.entries(config.rules as Record<string, unknown>)) {
+        if (typeof severity !== "string" || !validSeverities.has(severity)) {
+          errors.push({ field: `rules.${ruleId}`, message: `Invalid severity "${severity}" for rule "${ruleId}". Valid: error, warning, suggestion, off` });
+        }
+      }
+    }
+  }
+
+  // Validate exclude
+  if (config.exclude !== undefined) {
+    if (!Array.isArray(config.exclude)) {
+      errors.push({ field: "exclude", message: "exclude must be an array of strings" });
+    } else {
+      for (let i = 0; i < config.exclude.length; i++) {
+        if (typeof config.exclude[i] !== "string") {
+          errors.push({ field: `exclude[${i}]`, message: "Each exclude entry must be a string" });
+        }
+      }
+    }
+  }
+
+  // Validate modular
+  if (config.modular !== undefined && typeof config.modular !== "boolean") {
+    errors.push({ field: "modular", message: "modular must be a boolean" });
+  }
+
+  // Validate framework
+  if (config.framework !== undefined && typeof config.framework !== "string") {
+    errors.push({ field: "framework", message: "framework must be a string" });
+  }
+
+  // Validate output
+  if (config.output !== undefined && typeof config.output !== "string") {
+    errors.push({ field: "output", message: "output must be a string" });
+  }
+
+  // Validate plugins
+  if (config.plugins !== undefined) {
+    if (!Array.isArray(config.plugins)) {
+      errors.push({ field: "plugins", message: "plugins must be an array of strings" });
+    } else {
+      for (let i = 0; i < config.plugins.length; i++) {
+        if (typeof config.plugins[i] !== "string") {
+          errors.push({ field: `plugins[${i}]`, message: "Each plugin entry must be a string" });
+        }
+      }
+    }
+  }
+
+  const result = {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+  };
+
+  return [{ type: "text", text: JSON.stringify(result, null, 2) }];
+}
+
 // ─── MCP Protocol Handler ────────────────────────────────────
 
 const SERVER_INFO = {
   name: "claudemd-pro",
-  version: "0.1.0",
+  version: "0.3.0",
 };
 
 const CAPABILITIES = {
@@ -611,6 +760,15 @@ async function handleRequest(req: JsonRpcRequest): Promise<JsonRpcResponse> {
             break;
           case "claudemd_evolve":
             content = await handleEvolve(toolArgs);
+            break;
+          case "claudemd_compare":
+            content = await handleCompare(toolArgs);
+            break;
+          case "claudemd_fix":
+            content = await handleFix(toolArgs);
+            break;
+          case "claudemd_validate":
+            content = await handleValidate(toolArgs);
             break;
           default:
             return makeError(id, -32601, `Unknown tool: ${toolName}`);

@@ -52,5 +52,69 @@ function mergeConfig(
   };
 }
 
+// ─── Config Validation ───────────────────────────────────────
+
+export interface ConfigWarning {
+  field: string;
+  message: string;
+}
+
+const KNOWN_PRESETS = new Set(["default", "strict", "lean"]);
+const VALID_SEVERITIES = new Set(["error", "warning", "suggestion", "off"]);
+const KNOWN_CONFIG_KEYS = new Set([
+  "preset", "maxTokens", "rules", "exclude", "framework",
+  "output", "modular", "plugins",
+]);
+
+/**
+ * Validate a loaded config and return warnings for any issues.
+ * Does not throw — returns an array of problems to display.
+ */
+export function validateConfig(config: Record<string, unknown>): ConfigWarning[] {
+  const warnings: ConfigWarning[] = [];
+
+  // Warn on unknown keys
+  for (const key of Object.keys(config)) {
+    if (!KNOWN_CONFIG_KEYS.has(key)) {
+      warnings.push({ field: key, message: `Unknown config key "${key}"` });
+    }
+  }
+
+  // Validate types
+  if (config.maxTokens !== undefined && typeof config.maxTokens !== "number") {
+    warnings.push({ field: "maxTokens", message: `"maxTokens" must be a number, got ${typeof config.maxTokens}` });
+  }
+
+  if (config.preset !== undefined && typeof config.preset === "string" && !KNOWN_PRESETS.has(config.preset)) {
+    warnings.push({ field: "preset", message: `Unknown preset "${config.preset}". Valid presets: default, strict, lean` });
+  }
+
+  if (config.modular !== undefined && typeof config.modular !== "boolean") {
+    warnings.push({ field: "modular", message: `"modular" must be a boolean, got ${typeof config.modular}` });
+  }
+
+  if (config.exclude !== undefined && !Array.isArray(config.exclude)) {
+    warnings.push({ field: "exclude", message: `"exclude" must be an array, got ${typeof config.exclude}` });
+  }
+
+  if (config.plugins !== undefined && !Array.isArray(config.plugins)) {
+    warnings.push({ field: "plugins", message: `"plugins" must be an array, got ${typeof config.plugins}` });
+  }
+
+  // Validate rule severities
+  if (config.rules && typeof config.rules === "object") {
+    for (const [ruleId, severity] of Object.entries(config.rules as Record<string, unknown>)) {
+      if (typeof severity !== "string" || !VALID_SEVERITIES.has(severity)) {
+        warnings.push({
+          field: `rules.${ruleId}`,
+          message: `Invalid severity "${severity}" for rule "${ruleId}". Valid: error, warning, suggestion, off`,
+        });
+      }
+    }
+  }
+
+  return warnings;
+}
+
 export { type ClaudemdConfig } from "./schema.js";
 export { DEFAULT_CONFIG } from "./schema.js";

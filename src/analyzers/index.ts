@@ -36,6 +36,8 @@ export interface AnalyzerOptions {
   verbose?: boolean;
   /** Skip git history analysis (faster) */
   skipGit?: boolean;
+  /** Directories to exclude from analysis (from config) */
+  exclude?: string[];
 }
 
 /**
@@ -47,7 +49,7 @@ export interface AnalyzerOptions {
 export async function analyzeCodebase(
   opts: AnalyzerOptions
 ): Promise<CodebaseProfile> {
-  const { rootDir, framework, skipGit } = opts;
+  const { rootDir, framework, skipGit, exclude = [] } = opts;
 
   // Phase 1: Stack detection (everything else depends on this)
   const stack = await detectStack(rootDir, framework);
@@ -55,7 +57,7 @@ export async function analyzeCodebase(
   // Phase 2: Run remaining analyzers in parallel
   const [architecture, commands, database, testing, gotchas, environment, cicd, gitHistory] =
     await Promise.all([
-      safeAnalyze("architecture", () => analyzeArchitecture(rootDir, stack)),
+      safeAnalyze("architecture", () => analyzeArchitecture(rootDir, stack, exclude)),
       safeAnalyze("commands", () => analyzeCommands(rootDir, stack)),
       safeAnalyze("database", () => analyzeDatabase(rootDir, stack)),
       safeAnalyze("testing", () => analyzeTesting(rootDir, stack)),

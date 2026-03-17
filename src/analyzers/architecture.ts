@@ -189,17 +189,19 @@ const IGNORE_DIRS = new Set([
 
 export async function analyzeArchitecture(
   rootDir: string,
-  stack: StackProfile
+  stack: StackProfile,
+  exclude: string[] = []
 ): Promise<ArchitectureProfile> {
   const purposes = DIR_PURPOSES[stack.framework] ?? DIR_PURPOSES.generic;
   const topLevelDirs: DirectoryInfo[] = [];
   let totalFiles = 0;
+  const excludeSet = new Set([...IGNORE_DIRS, ...exclude.map((e) => e.replace(/\/$/, ""))]);
 
   // Scan top-level and one level deep
   const entries = readdirSync(rootDir, { withFileTypes: true });
 
   for (const entry of entries) {
-    if (!entry.isDirectory() || IGNORE_DIRS.has(entry.name) || entry.name.startsWith(".")) {
+    if (!entry.isDirectory() || excludeSet.has(entry.name) || entry.name.startsWith(".")) {
       if (entry.isFile()) totalFiles++;
       continue;
     }

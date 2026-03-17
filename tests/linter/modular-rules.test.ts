@@ -196,7 +196,9 @@ describe("Modular Lint Rules", () => {
       const results = runRules(ctx);
       const score = calculateScore(content, results);
       const total = totalScore(score);
-      expect(total).toBeLessThan(60);
+      // Score is higher than before because we fixed double-counting
+      // (vague no longer penalizes both actionability AND specificity)
+      expect(total).toBeLessThan(70);
     });
   });
 });

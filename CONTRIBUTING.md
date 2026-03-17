@@ -27,9 +27,9 @@ Add deep analysis for new frameworks in `src/frameworks/`. Each analyzer should:
 - Return a typed profile the generator can use
 - Include tests with fixture projects in `tests/fixtures/`
 
-Currently implemented: Rails, Next.js, Django, Laravel, Phoenix, Go, Rust, Spring, FastAPI.
+Currently implemented: Rails, Next.js, Django, Laravel, Phoenix, Go, Rust, Spring, FastAPI, NestJS, Nuxt, Svelte/SvelteKit, Astro, Remix, Hono.
 
-**New targets:** Svelte/SvelteKit, Nuxt, Remix, Astro, NestJS, Hono
+**New targets:** Flutter/Dart, .NET/C#, Deno, Bun, Elixir non-Phoenix
 
 ### Lint Rules (Medium Impact)
 Add new effectiveness rules in `src/linter/rules/`. Each rule must implement the `LintRule` interface from `src/linter/types.ts`:
@@ -50,6 +50,15 @@ Build plugin packages that export additional `LintRule` arrays. Plugins are load
 
 ### MCP Tools
 Extend the MCP server in `src/mcp/` with new tools for Claude Desktop / Claude Code integration.
+
+### CI Provider Analyzers (Medium Impact)
+Add analyzers for CI systems beyond GitHub Actions in `src/analyzers/`. Targets: Jenkins, Azure Pipelines, Bitbucket Pipelines, CircleCI.
+
+### Database Analyzer Extensions (Medium Impact)
+Extend database analysis in `src/analyzers/` with support for MongoDB, SeaORM, and other ORMs/databases not yet covered.
+
+### Config Plugins
+Build config plugin packages that extend `.claudemdrc` with custom options and validation.
 
 ### Evolve Auto-Fix
 Improve the drift detection engine in `src/evolve/` — better heuristics for detecting when CLAUDE.md sections have gone stale, and safer auto-apply logic.

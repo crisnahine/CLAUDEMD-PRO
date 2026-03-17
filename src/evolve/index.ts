@@ -75,7 +75,7 @@ export async function detectDrift(
   // Run all drift detectors
   driftItems.push(...detectStalePaths(content, rootDir));
   driftItems.push(...detectMissingDirs(content, sections, profile.architecture));
-  driftItems.push(...detectChangedCommands(content, sections, profile.commands, profile.stack));
+  driftItems.push(...detectChangedCommands(content, sections, profile.commands, profile.stack, rootDir));
   driftItems.push(...detectNewDeps(content, profile.stack));
   driftItems.push(...detectRemovedDeps(content, profile.stack));
   driftItems.push(...detectFrameworkChanges(content, profile.stack));
@@ -101,8 +101,9 @@ export async function detectDrift(
 function detectStalePaths(content: string, rootDir: string): DriftItem[] {
   const items: DriftItem[] = [];
 
-  // Match paths in code blocks and inline references like /src/foo/ or `/src/foo`
-  const pathPattern = /(?:^|\s|`)(\/?(?:src|app|lib|config|test|tests|spec|db|prisma|public|scripts|packages)\/[a-zA-Z0-9_\-./]*)\/?(?:\s|$|`)/gm;
+  // Expanded path prefixes — aligned with the stale-ref lint rule
+  const prefixes = "src|app|lib|config|test|tests|spec|db|prisma|public|internal|cmd|utils|services|models|helpers|scripts|packages|routes|middleware|api|views|templates|static|assets|components|hooks|stores|pages|resources|migrations|schemas|types|fixtures|factories|vendor|web|docs|tools|deployments|build|dist|proto";
+  const pathPattern = new RegExp(`(?:^|\\s|${"\\`"})(\\/?(?:${prefixes})\\/[a-zA-Z0-9_\\-./]*)\\/?(?:\\s|$|${"\\`"})`, "gm");
   let match;
 
   while ((match = pathPattern.exec(content)) !== null) {
@@ -177,12 +178,55 @@ function detectChangedCommands(
   content: string,
   sections: ParsedSection[],
   commands: CommandsProfile,
-  stack: StackProfile
+  stack: StackProfile,
+  rootDir: string
 ): DriftItem[] {
   const items: DriftItem[] = [];
 
+  // Detect Makefile target changes
+  const makefilePath = join(rootDir, "Makefile");
+  if (existsSync(makefilePath)) {
+    try {
+      const makefile = readFileSync(makefilePath, "utf-8");
+      const makeTargets = [...makefile.matchAll(/^([a-zA-Z_][\w-]*):/gm)].map((m) => m[1]);
+      for (const target of makeTargets) {
+        const makeCmd = `make ${target}`;
+        if (content.includes(makeCmd) && !makefile.includes(`${target}:`)) {
+          items.push({
+            type: "changed-command",
+            severity: "critical",
+            message: `Command \`${makeCmd}\` is referenced but the Makefile target no longer exists.`,
+            suggestion: `Remove or update the reference to \`${makeCmd}\`.`,
+          });
+        }
+      }
+    } catch { /* ignore read errors */ }
+  }
+
+  // Detect Rakefile task changes (Ruby)
+  const rakefilePath = join(rootDir, "Rakefile");
+  if (existsSync(rakefilePath)) {
+    const rakeRefs = [...content.matchAll(/rake\s+([\w:]+)/g)];
+    if (rakeRefs.length > 0) {
+      try {
+        const rakefile = readFileSync(rakefilePath, "utf-8");
+        for (const ref of rakeRefs) {
+          const taskName = ref[1];
+          if (!rakefile.includes(taskName)) {
+            items.push({
+              type: "changed-command",
+              severity: "warning",
+              message: `Rake task \`${taskName}\` is referenced but may not exist in Rakefile.`,
+              suggestion: `Verify \`rake ${taskName}\` still exists and update if needed.`,
+            });
+          }
+        }
+      } catch { /* ignore read errors */ }
+    }
+  }
+
   // Read current package.json scripts
-  const pkgPath = join(process.cwd(), "package.json");
+  const pkgPath = join(rootDir, "package.json");
   if (!existsSync(pkgPath)) return items;
 
   let currentScripts: Record<string, string>;

@@ -6,7 +6,12 @@ export const missingPatternsRule: LintRule = {
   description: "Missing key patterns section for frameworks that use conventions",
   run(ctx: LintContext): LintResult[] {
     const hasPatterns = /##\s*(key\s+)?patterns/i.test(ctx.content);
-    const conventionFrameworks = ["rails", "django", "laravel", "phoenix", "nextjs"];
+    const conventionFrameworks = [
+      "rails", "django", "laravel", "phoenix", "nextjs",
+      "fastapi", "spring", "nestjs", "nuxt", "sveltekit",
+      "astro", "remix", "hono", "gin", "echo", "fiber",
+      "actix", "axum",
+    ];
 
     if (!hasPatterns && ctx.stackFramework && conventionFrameworks.includes(ctx.stackFramework)) {
       return [{

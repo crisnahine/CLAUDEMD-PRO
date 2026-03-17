@@ -27,6 +27,12 @@ export type Framework =
   | "rails"
   | "nextjs"
   | "remix"
+  | "nestjs"
+  | "nuxt"
+  | "sveltekit"
+  | "svelte"
+  | "astro"
+  | "hono"
   | "express"
   | "fastify"
   | "django"
@@ -179,6 +185,24 @@ export async function detectStack(
     } else if (allDeps["@remix-run/node"] || allDeps["@remix-run/react"]) {
       profile.framework = "remix";
       profile.frameworkVersion = allDeps["@remix-run/node"] ?? allDeps["@remix-run/react"];
+    } else if (allDeps["@nestjs/core"]) {
+      profile.framework = "nestjs";
+      profile.frameworkVersion = allDeps["@nestjs/core"];
+    } else if (allDeps["nuxt"]) {
+      profile.framework = "nuxt";
+      profile.frameworkVersion = allDeps["nuxt"];
+    } else if (allDeps["@sveltejs/kit"]) {
+      profile.framework = "sveltekit";
+      profile.frameworkVersion = allDeps["@sveltejs/kit"];
+    } else if (allDeps["svelte"]) {
+      profile.framework = "svelte";
+      profile.frameworkVersion = allDeps["svelte"];
+    } else if (allDeps["astro"]) {
+      profile.framework = "astro";
+      profile.frameworkVersion = allDeps["astro"];
+    } else if (allDeps["hono"]) {
+      profile.framework = "hono";
+      profile.frameworkVersion = allDeps["hono"];
     } else if (allDeps["fastify"]) {
       profile.framework = "fastify";
       profile.frameworkVersion = allDeps["fastify"];

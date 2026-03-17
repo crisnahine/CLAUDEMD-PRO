@@ -9,7 +9,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import chalk from "chalk";
 import { detectStack } from "../analyzers/stack-detector.js";
-import { buildContext, runRules, calculateScore, totalScore, type LintResult, type ScoreBreakdown } from "../linter/index.js";
+import { buildContextAsync, runRules, calculateScore, totalScore, type LintResult, type ScoreBreakdown } from "../linter/index.js";
 import { loadConfig } from "../config/index.js";
 import { defaultPreset } from "../linter/presets/default.js";
 import { strictPreset } from "../linter/presets/strict.js";
@@ -57,8 +57,8 @@ export async function lintCommand(
   const presetName = opts.preset ?? config.preset ?? "default";
   const preset = PRESETS[presetName] ?? defaultPreset;
 
-  // Build lint context
-  const ctx = buildContext(content, rootDir, stack.language, stack.framework);
+  // Build lint context (async for accurate token counting)
+  const ctx = await buildContextAsync(content, rootDir, stack.language, stack.framework);
 
   // Run rules with preset
   const results = runRules(ctx, {

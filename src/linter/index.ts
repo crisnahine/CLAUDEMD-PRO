@@ -13,6 +13,7 @@ import type {
   ScoreBreakdown,
   Severity,
 } from "./types.js";
+import { countTokens } from "../token/index.js";
 import { tokenBudgetRule } from "./rules/token-budget.js";
 import { tokenBloatRule } from "./rules/token-bloat.js";
 import { missingVerifyRule } from "./rules/missing-verify.js";
@@ -27,6 +28,10 @@ import { missingPatternsRule } from "./rules/missing-patterns.js";
 import { importCandidateRule } from "./rules/import-candidate.js";
 import { contextEfficiencyRule } from "./rules/context-efficiency.js";
 import { duplicateContentRule } from "./rules/duplicate-content.js";
+import { commandsRunnableRule } from "./rules/commands-runnable.js";
+import { frameworkVersionSyncRule } from "./rules/framework-version-sync.js";
+import { depthImbalanceRule } from "./rules/depth-imbalance.js";
+import { contradictoryAdviceRule } from "./rules/contradictory-advice.js";
 
 // ─── All available rules ────────────────────────────────────
 
@@ -45,6 +50,10 @@ export const ALL_RULES: LintRule[] = [
   importCandidateRule,
   contextEfficiencyRule,
   duplicateContentRule,
+  commandsRunnableRule,
+  frameworkVersionSyncRule,
+  depthImbalanceRule,
+  contradictoryAdviceRule,
 ];
 
 // ─── Rule Runner ────────────────────────────────────────────
@@ -68,6 +77,25 @@ export function buildContext(
     rootDir,
     sections: parseSections(content),
     estimatedTokens: Math.ceil(content.length / 4),
+    stackLanguage,
+    stackFramework,
+  };
+}
+
+/** Async variant that uses tiktoken for accurate token count */
+export async function buildContextAsync(
+  content: string,
+  rootDir: string,
+  stackLanguage?: string,
+  stackFramework?: string
+): Promise<LintContext> {
+  const tokens = await countTokens(content);
+  return {
+    content,
+    lines: content.split("\n"),
+    rootDir,
+    sections: parseSections(content),
+    estimatedTokens: tokens,
     stackLanguage,
     stackFramework,
   };
@@ -102,11 +130,10 @@ export function runRules(ctx: LintContext, opts?: RunOptions): LintResult[] {
 
 export function calculateScore(
   content: string,
-  results: LintResult[]
+  results: LintResult[],
+  accurateTokens?: number
 ): ScoreBreakdown {
-  const tokens = Math.ceil(content.length / 4);
-  const errorCount = results.filter((r) => r.severity === "error").length;
-  const warningCount = results.filter((r) => r.severity === "warning").length;
+  const tokens = accurateTokens ?? Math.ceil(content.length / 4);
 
   // Token Efficiency: optimal range is 500-3000 tokens
   let tokenEfficiency = 100;
@@ -118,14 +145,15 @@ export function calculateScore(
   const bloatResults = results.filter((r) => r.ruleId === "token-bloat");
   tokenEfficiency -= bloatResults.length * 10;
 
-  // Actionability
+  // Actionability — vague instructions and verbosity reduce this
+  // (each rule penalizes ONLY its primary dimension to avoid double-counting)
   let actionability = 80;
   const vagueCount = results.filter((r) => r.ruleId === "vague").length;
-  const verifyMissing = results.some((r) => r.ruleId === "missing-verify");
   actionability -= vagueCount * 15;
-  if (verifyMissing) actionability -= 25;
+  const efficiencyCount = results.filter((r) => r.ruleId === "context-efficiency").length;
+  actionability -= efficiencyCount * 5;
 
-  // Coverage
+  // Coverage — missing sections reduce this
   let coverage = 100;
   if (results.some((r) => r.ruleId === "no-architecture")) coverage -= 20;
   if (results.some((r) => r.ruleId === "missing-gotchas")) coverage -= 15;
@@ -134,24 +162,28 @@ export function calculateScore(
   const sectionCount = (content.match(/^##\s/gm) ?? []).length;
   if (sectionCount < 3) coverage -= 20;
 
-  // Specificity
+  // Specificity — style-over-substance and redundancy reduce this
   let specificity = 90;
   const styleIssues = results.filter((r) => r.ruleId === "style-vs-linter").length;
-  specificity -= vagueCount * 15;
   specificity -= styleIssues * 10;
+  const redundantCount = results.filter((r) => r.ruleId === "redundant").length;
+  specificity -= redundantCount * 10;
 
-  // Freshness
+  // Freshness — stale references
   let freshness = 100;
   const staleRefs = results.filter((r) => r.ruleId === "stale-ref").length;
   freshness -= staleRefs * 20;
 
-  // Anti-Pattern Free
+  // Anti-Pattern Free — structural anti-patterns
   let antiPatternFree = 100;
-  antiPatternFree -= errorCount * 15;
-  antiPatternFree -= warningCount * 5;
-  antiPatternFree -= styleIssues * 10;
   const duplicates = results.filter((r) => r.ruleId === "duplicate-content").length;
-  antiPatternFree -= duplicates * 10;
+  antiPatternFree -= duplicates * 15;
+  const budgetErrors = results.filter((r) => r.ruleId === "token-budget").length;
+  antiPatternFree -= budgetErrors * 20;
+  const noImports = results.filter((r) => r.ruleId === "no-imports").length;
+  antiPatternFree -= noImports * 10;
+  const importCandidates = results.filter((r) => r.ruleId === "import-candidate").length;
+  antiPatternFree -= importCandidates * 5;
 
   return {
     tokenEfficiency: clamp(tokenEfficiency),
@@ -163,15 +195,28 @@ export function calculateScore(
   };
 }
 
+/** Dimension weights — more objective metrics weigh slightly more */
+const DIMENSION_WEIGHTS = {
+  tokenEfficiency: 1.2,
+  actionability: 1.0,
+  coverage: 0.8,
+  specificity: 0.9,
+  freshness: 1.2,
+  antiPatternFree: 0.9,
+} as const;
+
+const TOTAL_WEIGHT = Object.values(DIMENSION_WEIGHTS).reduce((s, w) => s + w, 0);
+
 export function totalScore(breakdown: ScoreBreakdown): number {
-  return Math.round(
-    (breakdown.tokenEfficiency +
-      breakdown.actionability +
-      breakdown.coverage +
-      breakdown.specificity +
-      breakdown.freshness +
-      breakdown.antiPatternFree) / 6
-  );
+  const weighted =
+    breakdown.tokenEfficiency * DIMENSION_WEIGHTS.tokenEfficiency +
+    breakdown.actionability * DIMENSION_WEIGHTS.actionability +
+    breakdown.coverage * DIMENSION_WEIGHTS.coverage +
+    breakdown.specificity * DIMENSION_WEIGHTS.specificity +
+    breakdown.freshness * DIMENSION_WEIGHTS.freshness +
+    breakdown.antiPatternFree * DIMENSION_WEIGHTS.antiPatternFree;
+
+  return Math.round(weighted / TOTAL_WEIGHT);
 }
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -208,5 +253,6 @@ function clamp(n: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, Math.round(n)));
 }
 
-// Re-export types
+// Re-export types and DIMENSION_WEIGHTS for testing
+export { DIMENSION_WEIGHTS };
 export type { LintRule, LintResult, LintContext, Section, ScoreBreakdown, Severity } from "./types.js";

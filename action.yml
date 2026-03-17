@@ -1,5 +1,5 @@
 name: 'claudemd-pro'
-description: 'Lint and score your CLAUDE.md for effectiveness — deep codebase-aware analysis with 14 rules and effectiveness scoring'
+description: 'Lint, score, and drift-check your CLAUDE.md for effectiveness — deep codebase-aware analysis with 18 rules and effectiveness scoring'
 author: 'crisnahine'
 branding:
   icon: 'check-circle'
@@ -17,6 +17,14 @@ inputs:
     description: 'Fail on warnings too'
     required: false
     default: 'false'
+  check-drift:
+    description: 'Run drift detection alongside lint'
+    required: false
+    default: 'false'
+  comment-on-pr:
+    description: 'Post results as a PR comment (requires GITHUB_TOKEN)'
+    required: false
+    default: 'false'
 outputs:
   score:
     description: 'Effectiveness score (0-100)'
@@ -24,6 +32,8 @@ outputs:
     description: 'Number of lint errors found'
   warnings:
     description: 'Number of lint warnings found'
+  drift-items:
+    description: 'Number of drift items found (if check-drift enabled)'
 runs:
   using: 'node20'
   main: 'dist/github-action/action.js'

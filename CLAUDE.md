@@ -20,18 +20,19 @@ npm run lint                         # ESLint
 ## Architecture
 ```
 /src/cli/          # CLI entry + command handlers (generate, lint, budget, evolve, compare, serve)
+/src/core/         # Shared logic modules reused by CLI and MCP (generate, lint)
 /src/analyzers/    # Codebase analysis modules (stack, arch, db, testing, gotchas, git-history, etc.)
-/src/frameworks/   # Framework-specific deep analyzers (django, fastapi, laravel, spring, phoenix, go, rust)
+/src/frameworks/   # Framework-specific deep analyzers (13 frameworks)
 /src/linter/       # Modular lint rules + scoring engine
-/src/linter/rules/ # Individual lint rule modules (14 rules)
+/src/linter/rules/ # Individual lint rule modules (18 rules)
 /src/linter/presets/ # Rule presets (default, strict, lean)
 /src/token/        # Token counting via tiktoken with chars/4 fallback
-/src/config/       # .claudemdrc config loading via cosmiconfig
+/src/config/       # .claudemdrc config loading + validation via cosmiconfig
 /src/evolve/       # Drift detection engine
-/src/mcp/          # MCP server for Claude Desktop/Code integration
-/src/github-action/ # GitHub Action wrapper
-/tests/            # Vitest test suite (60 tests)
-/tests/fixtures/   # Sample project directories (rails, nextjs, django, go, laravel)
+/src/mcp/          # MCP server for Claude Desktop/Code integration (8 tools)
+/src/github-action/ # GitHub Action wrapper (lint + drift check + PR comments)
+/tests/            # Vitest test suite (124 tests)
+/tests/fixtures/   # Sample project directories (rails, nextjs, django, go, laravel, fastapi, spring, monorepo, minimal)
 ```
 
 ## Key Patterns
@@ -42,6 +43,8 @@ npm run lint                         # ESLint
 - Rule presets control which rules run and their severity
 - Token counting uses tiktoken (cl100k_base) with chars/4 fallback
 - Config loaded via cosmiconfig from .claudemdrc, claudemd.config.js, etc.
+- Scoring engine uses weighted dimensions to avoid double-counting penalties
+- Core modules in /src/core/ are shared between CLI and MCP server
 
 ## Gotchas — DON'T Do This
 - DON'T import from node:fs/promises — use sync fs for simplicity in analyzers

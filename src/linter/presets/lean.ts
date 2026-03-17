@@ -9,5 +9,6 @@ export const leanPreset: LintPreset = {
     "stale-ref",
     "vague",
     "no-architecture",
+    "commands-runnable",
   ],
 };

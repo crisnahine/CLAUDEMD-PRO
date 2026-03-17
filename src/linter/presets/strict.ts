@@ -18,6 +18,10 @@ export const strictPreset: LintPreset = {
     "import-candidate",
     "context-efficiency",
     "duplicate-content",
+    "commands-runnable",
+    "framework-version-sync",
+    "depth-imbalance",
+    "contradictory-advice",
   ],
   overrides: {
     "missing-gotchas": "warning",
@@ -25,5 +29,6 @@ export const strictPreset: LintPreset = {
     "missing-patterns": "warning",
     "import-candidate": "warning",
     "context-efficiency": "warning",
+    "depth-imbalance": "warning",
   },
 };

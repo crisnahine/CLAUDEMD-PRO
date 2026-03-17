@@ -18,5 +18,9 @@ export const defaultPreset: LintPreset = {
     "import-candidate",
     "context-efficiency",
     "duplicate-content",
+    "commands-runnable",
+    "framework-version-sync",
+    "depth-imbalance",
+    "contradictory-advice",
   ],
 };
