@@ -10,7 +10,7 @@
  * contaminates the protocol channel.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { analyzeCodebase } from "../analyzers/index.js";
@@ -56,7 +56,7 @@ const TOOLS = [
   {
     name: "claudemd_generate",
     description:
-      "Analyze a codebase and return generated CLAUDE.md content. Runs all static analyzers (stack detection, architecture, commands, database, testing, gotchas, environment, CI/CD) and renders a complete CLAUDE.md.",
+      "Analyze a codebase, generate a CLAUDE.md, and write it to disk. Runs all static analyzers (stack detection, architecture, commands, database, testing, gotchas, environment, CI/CD). Writes to rootDir/CLAUDE.md by default.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -83,6 +83,16 @@ const TOOLS = [
           type: "boolean",
           description:
             "Treat the project as a monorepo with multiple packages (default: false)",
+        },
+        output: {
+          type: "string",
+          description:
+            "Output file path (default: rootDir/CLAUDE.md)",
+        },
+        write: {
+          type: "boolean",
+          description:
+            "Write the file to disk (default: true). Set false to only return content.",
         },
       },
       required: ["rootDir"],
@@ -370,6 +380,8 @@ async function handleGenerate(params: {
   modular?: boolean;
   preset?: string;
   monorepo?: boolean;
+  output?: string;
+  write?: boolean;
 }): Promise<{ type: string; text: string }[]> {
   const rootDir = resolve(params.rootDir);
   if (!existsSync(rootDir)) {
@@ -382,6 +394,15 @@ async function handleGenerate(params: {
   });
 
   const rendered = renderClaudeMd(profile, { modular: params.modular });
+
+  const shouldWrite = params.write !== false;
+  if (shouldWrite) {
+    const outputPath = params.output
+      ? resolve(params.output)
+      : resolve(rootDir, "CLAUDE.md");
+    writeFileSync(outputPath, rendered, "utf-8");
+    return [{ type: "text", text: `Wrote ${outputPath}\n\n${rendered}` }];
+  }
 
   return [{ type: "text", text: rendered }];
 }
@@ -786,7 +807,7 @@ async function handleReadBatch(params: {
 
 const SERVER_INFO = {
   name: "claudemd-pro",
-  version: "0.4.1",
+  version: "0.4.2",
 };
 
 const CAPABILITIES = {
