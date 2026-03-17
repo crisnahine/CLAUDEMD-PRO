@@ -5,7 +5,7 @@ Thanks for your interest in contributing! Here's how to get started.
 ## Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/claudemd-pro.git
+git clone https://github.com/crisnahine/CLAUDEMD-PRO.git
 cd claudemd-pro
 npm install
 npm run test        # Verify everything works

@@ -1,5 +1,8 @@
 # claudemd-pro
 
+[![npm version](https://img.shields.io/npm/v/claudemd-pro)](https://www.npmjs.com/package/claudemd-pro)
+[![GitHub](https://img.shields.io/github/license/crisnahine/CLAUDEMD-PRO)](https://github.com/crisnahine/CLAUDEMD-PRO)
+
 > Deep codebase-aware CLAUDE.md generator, linter, and effectiveness scorer.
 
 Your CLAUDE.md is the highest-leverage file in your AI coding workflow. A good one makes Claude perform like a senior teammate. A bad one wastes tokens and actively hurts performance.
@@ -187,7 +190,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: your-org/claudemd-pro@v0.2.0
+      - uses: crisnahine/CLAUDEMD-PRO@v0.2.1
         with:
           threshold: 60
           strict: false
