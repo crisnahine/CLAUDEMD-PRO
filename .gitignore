@@ -6,3 +6,5 @@ coverage/
 .env
 tests/fixtures/.tmp-test/
 tests/fixtures/.tmp-config/
+tests/fixtures/.tmp-scanner-test/
+.mcp.json

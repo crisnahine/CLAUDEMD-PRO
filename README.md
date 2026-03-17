@@ -32,6 +32,19 @@ npx claudemd-pro generate
 npm install -g claudemd-pro
 ```
 
+### MCP Setup (one command)
+
+```bash
+# Auto-configure for both Claude Desktop and Claude Code
+claudemd install
+
+# Or pick one
+claudemd install --claude-desktop
+claudemd install --claude-code
+```
+
+This writes the MCP server config automatically — no manual JSON editing needed.
+
 ## Quick Start
 
 ```bash
@@ -151,10 +164,14 @@ Start an MCP server for Claude Desktop / Claude Code integration. Exposes 10 too
 The last two tools enable a **multi-phase deep analysis** workflow: generate a base CLAUDE.md, scan files by category, read key files from each category, then synthesize a richer result.
 
 ```bash
+# Auto-configure (recommended)
+claudemd install
+
+# Or start manually
 claudemd serve
 ```
 
-Add to your Claude Desktop config (`claude_desktop_config.json`):
+If you prefer manual config, add to your Claude Desktop config (`claude_desktop_config.json`):
 
 ```json
 {

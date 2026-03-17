@@ -7,6 +7,7 @@ import { lintCommand } from "./lint.js";
 import { budgetCommand } from "./budget.js";
 import { evolveCommand } from "./evolve.js";
 import { compareCommand } from "./compare.js";
+import { installCommand } from "./install.js";
 
 const program = new Command();
 
@@ -15,7 +16,7 @@ program
   .description(
     "Deep codebase-aware CLAUDE.md generator, linter, and effectiveness scorer"
   )
-  .version("0.3.0");
+  .version("0.4.0");
 
 // ─── generate ───────────────────────────────────────────────
 program
@@ -86,5 +87,13 @@ program
     const { startMcpServer } = await import("../mcp/index.js");
     await startMcpServer();
   });
+
+// ─── install ────────────────────────────────────────────────
+program
+  .command("install")
+  .description("Auto-configure MCP server for Claude Desktop and/or Claude Code")
+  .option("--claude-desktop", "Install for Claude Desktop only")
+  .option("--claude-code", "Install for Claude Code only")
+  .action(installCommand);
 
 program.parse();

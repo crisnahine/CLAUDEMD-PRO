@@ -19,7 +19,7 @@ npm run lint                         # ESLint
 
 ## Architecture
 ```
-/src/cli/          # CLI entry + command handlers (generate, lint, budget, evolve, compare, serve)
+/src/cli/          # CLI entry + command handlers (generate, lint, budget, evolve, compare, serve, install)
 /src/core/         # Shared logic modules reused by CLI and MCP (generate, lint)
 /src/analyzers/    # Codebase analysis modules (stack, arch, db, testing, gotchas, git-history, file-scanner, file-reader, etc.)
 /src/frameworks/   # Framework-specific deep analyzers (13 frameworks)
